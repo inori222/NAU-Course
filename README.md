@@ -1,5 +1,7 @@
 # NAU Course（南京审计大学本地课表）
 
+项目仓库：[inori222/NAU-Course](https://github.com/inori222/NAU-Course)
+
 基于 [Comzjh/XMU-Course](https://github.com/Comzjh/XMU-Course) 的 Android 本地课表项目，保留其 Compose、Room、课表布局与 Glance Widget 架构。源码基线为 `9a6f316c61ca8cd09a1ab7fe71d97e58c41f9ddd`。
 
 应用打开[南京审计大学教务系统公开登录首页](https://jwc.nau.edu.cn/)，用户自行完成登录并进入“我的课表”，点击导入后本地读取课表 HTML、解析课程并保存。**所有课程数据默认保存在用户设备本地。** 项目没有后端、云同步或课程上传功能，应用不保存账号密码，不模拟登录或绕过认证。
@@ -53,12 +55,16 @@ HTTP 传输没有加密或完整性保护，经过的网络可能读取或篡改
 需要 JDK 17、Android SDK 35 和 Build Tools 36.0.0。保持上游 AGP 8.7.3、Kotlin 2.0.21、Room 2.6.1 等依赖版本；本机 SDK 路径放在 `local.properties`，不要提交个人路径和代理。
 
 ```sh
+git clone https://github.com/inori222/NAU-Course.git
+cd NAU-Course
 ./gradlew test
 ./gradlew assembleDebug
 node app/src/test/js/check-page-inspection.cjs # 可选：验证布局脚本
 ```
 
 Windows 使用 `gradlew.bat`。网络受限时，依赖已经缓存可加 `--offline`；受限 Windows 环境下 Robolectric 解压 SQLite DLL 可能需要非沙箱 `--no-daemon` 进程。上游 `testReleaseUnitTest` 任务保持禁用，完整测试运行在 Debug JVM/Robolectric variant。
+
+正式版需要自己的 Android 签名密钥。复制 `keystore.properties.example` 为 `keystore.properties`，在本机填写密钥路径及密码，然后运行 `./gradlew assembleRelease`。密钥和配置不得提交到仓库；请离线备份两者，后续更新必须使用同一个签名。不同签名的 Debug 和 Release 包不能互相覆盖安装，卸载会删除本地课表数据。
 
 测试结果、迁移说明和未完成事项见 [阶段记录](docs/PHASE_STATUS.md)。调试包位于 `app/build/outputs/apk/debug/app-debug.apk`；请在 Android 真机测试学校登录和课表导入，正式验收以实际设备结果为准。
 

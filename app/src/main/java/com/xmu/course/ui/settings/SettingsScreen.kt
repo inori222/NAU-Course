@@ -184,7 +184,8 @@ fun SettingsScreen(
             Card(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text("关于 NAU Course", style = MaterialTheme.typography.titleMedium)
-                    Text("版本 v0.6.2", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp))
+                    val appVersion = remember(context) { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
+                    Text("版本 v$appVersion", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp))
                     Text("南京审计大学本地课表，基于 XMU Course", modifier = Modifier.padding(top = 8.dp))
                     Text("MIT License", modifier = Modifier.padding(top = 4.dp))
                     Button(
