@@ -2,6 +2,7 @@ package com.xmu.course.ui.import
 
 import android.net.Uri
 import android.webkit.WebView
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -78,7 +79,14 @@ internal class NauLayoutRecovery(private val scope: CoroutineScope) {
             withTimeoutOrNull(12_000) {
                 repeat(20) {
                     if (!isActive || !NauLayoutRepair.isSchoolHttps(view.url)) return@withTimeoutOrNull
-                    val result = NauLayoutRepair.evaluate(view)
+                    val result = try {
+                        NauLayoutRepair.evaluate(view)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        // The view may disappear between a navigation and the callback.
+                        return@withTimeoutOrNull
+                    }
                     if (result == "\"height-adjusted\"") return@withTimeoutOrNull
                     delay(600)
                 }
