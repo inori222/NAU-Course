@@ -9,6 +9,7 @@ import com.xmu.course.data.DisplaySettings
 import com.xmu.course.data.TimetablePrefs
 import com.xmu.course.data.TimetableRepository
 import com.xmu.course.data.local.AppDatabase
+import com.xmu.course.data.local.SkippedCourseEntity
 import com.xmu.course.domain.Course
 import com.xmu.course.domain.Timetable
 import com.xmu.course.domain.TimetableConfig
@@ -66,6 +67,7 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
     private val db = AppDatabase.getInstance(application)
     private val courseRepo = CourseRepository(db)
     private val timetableRepo = TimetableRepository(db)
+    private var skippedMarks: List<SkippedCourseEntity> = emptyList()
 
     private val _uiState = MutableStateFlow(TimetableUiState())
     val uiState: StateFlow<TimetableUiState> = _uiState.asStateFlow()
@@ -96,8 +98,9 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
                                 combine(
                                     courseRepo.observeCourses(timetable.semesterId),
                                     timetableRepo.observeConfig(timetable.id),
-                                    courseRepo.observeSkippedCourseIds(),
+                                    courseRepo.observeSkippedCourses(),
                                 ) { courses, config, skipped ->
+                                    skippedMarks = skipped
                                     val actualWeek = computeCurrentWeek(timetable)
                                         .coerceIn(1, timetable.totalWeeks)
                                     val viewWeek = resolveViewWeek(
@@ -113,7 +116,7 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
                                     TimetableUiState(
                                         timetable = timetable,
                                         courses = courses,
-                                        skippedCourseIds = skipped,
+                                        skippedCourseIds = skippedForWeek(skipped, viewWeek),
                                         config = config,
                                         actualWeek = actualWeek,
                                         viewWeek = viewWeek,
@@ -141,7 +144,7 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
     /** 切换查看周（仅影响浏览，不改 actualWeek），并按课表持久化。 */
     fun selectWeek(week: Int) {
         val coerced = week.coerceIn(1, _uiState.value.totalWeeks)
-        _uiState.update { it.copy(viewWeek = coerced) }
+        _uiState.update { it.copy(viewWeek = coerced, skippedCourseIds = skippedForWeek(skippedMarks, coerced)) }
         val timetable = _uiState.value.timetable
         if (timetable != null) {
             TimetablePrefs.setViewWeek(getApplication(), timetable.id, coerced)
@@ -173,13 +176,18 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
 
     /** 课程详情：标记 / 取消翘课。 */
     fun toggleCourseSkipped(courseId: Long, skipped: Boolean) {
+        val week = _uiState.value.viewWeek
         viewModelScope.launch {
-            if (skipped) courseRepo.markCourseSkipped(courseId)
-            else courseRepo.unmarkCourseSkipped(courseId)
+            if (skipped) courseRepo.markCourseSkipped(courseId, week)
+            else courseRepo.unmarkCourseSkipped(courseId, week)
         }
     }
 
     companion object {
+        internal fun skippedForWeek(marks: List<SkippedCourseEntity>, week: Int): Set<Long> {
+            val excluded = marks.filter { it.week == -week }.map { it.courseId }.toSet()
+            return marks.filter { it.week == week || (it.week == 0 && it.courseId !in excluded) }.map { it.courseId }.toSet()
+        }
         /**
          * 解析查看周：
          * - 同一课表：保持用户当前浏览位置（不回跳）；

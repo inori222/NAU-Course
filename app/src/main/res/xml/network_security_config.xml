@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 默认禁止明文；只兼容学校公开统一认证入口及其回跳。 -->
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">sso.nau.edu.cn</domain>
+        <domain includeSubdomains="false">jwc.nau.edu.cn</domain>
+    </domain-config>
+</network-security-config>

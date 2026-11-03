@@ -13,6 +13,15 @@
 .analysis/
 /_analysis/
 *.zip
+/.gradle-user/
+/.tooling/
+/.kotlin/
+
+# Raw school pages may contain personal information. Only reviewed fixtures belong in test/resources.
+/private-samples/
+/sample_nau_timetable_sanitized.html
+/sample_nau_timetable2_sanitized.html
+/WechatPayImage/
 
 # Local exports, captured pages and analysis artifacts
 /output/

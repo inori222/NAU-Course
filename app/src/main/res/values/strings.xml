@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">XMU Course</string>
+    <string name="app_name">南审本地课表</string>
     <string name="widget_today_course_name">今日课程</string>
     <string name="widget_next_course_name">下一节课</string>
     <string name="widget_today_course_description">在桌面查看今天的课程、时间和地点</string>

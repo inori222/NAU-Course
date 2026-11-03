@@ -32,15 +32,15 @@ private data class GuideSection(
 )
 
 private val GUIDE_SECTIONS = listOf(
-    GuideSection("欢迎使用", "XMU Course 是厦大学生的本地课表工具。", listOf(
+    GuideSection("欢迎使用", "NAU Course 是南京审计大学本地课表工具。", listOf(
         "第一次打开时，先阅读引导并进入主界面。",
         "课表、背景和翘课标记都保存在本机，换设备需要重新导入。",
         "底部导航分为课表、导入、使用教程和设置四个区域。",
     ), "建议先完成一次课表导入，再按自己的习惯调整显示。"),
-    GuideSection("导入课表", "从厦大金智教务系统读取当前学期课表。", listOf(
-        "打开底部“导入”，点击进入金智教务页面。",
-        "在应用内网页登录厦大教务系统；登录信息只在 WebView 会话中使用。",
-        "回到课表页面并保存，等待解析完成提示。",
+    GuideSection("导入课表", "从南京审计大学教务系统读取当前学期课表。", listOf(
+        "打开底部“导入”，点击进入南审教务页面。",
+        "在应用内网页登录南审教务系统；登录信息只在 WebView 会话中使用。",
+        "进入我的课表页面并点击导入，等待解析完成提示。",
         "导入完成后，课程会写入本地 Room 数据库，之后查看课表不依赖网络。",
     ), "重复导入同一学期时，应用会先提示冲突，再由你决定是否覆盖。"),
     GuideSection("查看课表", "用周视图快速确认今天和接下来几周的安排。", listOf(
@@ -102,7 +102,7 @@ fun UserGuideScreen(onBack: () -> Unit) {
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                 ) {
                     Column(Modifier.padding(20.dp)) {
-                        Text("XMU Course", style = MaterialTheme.typography.headlineSmall)
+                        Text("NAU Course", style = MaterialTheme.typography.headlineSmall)
                         Text(
                             "从导入课表到桌面提醒，按章节找到你需要的操作。",
                             style = MaterialTheme.typography.bodyLarge,

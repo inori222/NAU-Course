@@ -25,6 +25,28 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class SkipCourseTest {
 
+    @Test
+    fun skipIsSpecificToWeekAndGlobalMarkersRemain() = runTest {
+        val course = courses().first()
+        courseRepo.markCourseSkipped(course.id, 2)
+        courseRepo.markCourseSkipped(course.id, 4)
+        assertEquals(setOf(course.id), db.skippedCourseDao().getSkippedCourseIdsForWeek(2).toSet())
+        assertTrue(db.skippedCourseDao().getSkippedCourseIdsForWeek(3).isEmpty())
+        courseRepo.unmarkCourseSkipped(course.id, 2)
+        assertTrue(db.skippedCourseDao().getSkippedCourseIdsForWeek(2).isEmpty())
+        assertEquals(setOf(course.id), db.skippedCourseDao().getSkippedCourseIdsForWeek(4).toSet())
+        courseRepo.markCourseSkipped(course.id) // v9 全周标记兼容
+        assertEquals(setOf(course.id), db.skippedCourseDao().getSkippedCourseIdsForWeek(3).toSet())
+        courseRepo.unmarkCourseSkipped(course.id, 3)
+        assertTrue(db.skippedCourseDao().getSkippedCourseIdsForWeek(3).isEmpty())
+        assertEquals(setOf(course.id), db.skippedCourseDao().getSkippedCourseIdsForWeek(2).toSet())
+        val marks = courseRepo.observeSkippedCourses().first()
+        assertTrue(com.xmu.course.ui.timetable.TimetableViewModel.skippedForWeek(marks, 3).isEmpty())
+        assertEquals(setOf(course.id), com.xmu.course.ui.timetable.TimetableViewModel.skippedForWeek(marks, 2))
+        courseRepo.markCourseSkipped(course.id, 3)
+        assertEquals(setOf(course.id), db.skippedCourseDao().getSkippedCourseIdsForWeek(3).toSet())
+    }
+
     private lateinit var db: AppDatabase
     private lateinit var courseRepo: CourseRepository
     private lateinit var timetableRepo: TimetableRepository

@@ -7,14 +7,19 @@ import androidx.lifecycle.viewModelScope
 import com.xmu.course.data.CourseRepository
 import com.xmu.course.data.ImportPreparation
 import com.xmu.course.data.ImportResult
-import com.xmu.course.data.TimetableRepository
+import com.xmu.course.data.TimetablePrefs
 import com.xmu.course.data.local.AppDatabase
 import com.xmu.course.domain.Course
+import com.xmu.course.parser.NauCourseParser
+import com.xmu.course.parser.NauStudentPageAdapter
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val TAG = "XmuImport"
 
@@ -22,6 +27,8 @@ private const val TAG = "XmuImport"
 data class ImportUiState(
     val message: String? = null,
     val conflict: ImportPreparation.Conflict? = null,
+    val importCompleted: Boolean = false,
+    val isImporting: Boolean = false,
 )
 
 /**
@@ -30,9 +37,10 @@ data class ImportUiState(
 class ImportViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = CourseRepository(AppDatabase.getInstance(application))
-
-    // 导入成功后为学期绑定课表（细节隐藏在 TimetableRepository 内）。
-    private val timetableRepository = TimetableRepository(AppDatabase.getInstance(application))
+    private val parser = NauCourseParser(NauStudentPageAdapter())
+    val isParserConfigured: Boolean get() = parser.isConfigured
+    suspend fun isTimetableReady(html: String): Boolean =
+        withContext(Dispatchers.Default) { parser.isTimetableReady(html) }
 
     private val _uiState = MutableStateFlow(ImportUiState())
     val uiState: StateFlow<ImportUiState> = _uiState.asStateFlow()
@@ -52,22 +60,19 @@ class ImportViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun import(html: String, source: String) {
-        // 调试日志：确认 Parser 输入包含课表内容（Bug 1 排查用）。
-        Log.d(
-            TAG,
-            "import($source): html.length=${html.length}, hasGrid=${html.contains("jsTbl_01")}, " +
-                "hasArrage=${html.contains("arrage")}, head=${html.take(500).replace('\n', ' ')}",
-        )
+        if (_uiState.value.isImporting) return
+        _uiState.update { it.copy(isImporting = true) }
         viewModelScope.launch {
             try {
-                when (val prep = repository.prepareImport(html)) {
+                val parsed = withContext(Dispatchers.Default) { parser.parse(html) }
+                when (val prep = repository.prepareImport(parsed)) {
                     is ImportPreparation.Ready -> {
                         Log.d(TAG, "parser 输出：${prep.courses.size} 门课程")
                         when (val r = repository.commitImport(prep.semester, prep.courses, overwrite = false)) {
                             is ImportResult.Success -> {
-                                timetableRepository.ensureForSemester(r.semesterId, prep.semester.name, prep.semester.startDate)
+                                TimetablePrefs.setCurrent(getApplication(), r.timetableId)
                                 _uiState.update {
-                                    it.copy(message = importSuccessMessage(prep.semester.name, r.count, prep.courses))
+                                    it.copy(message = importSuccessMessage(prep.semester.name, r.count, prep.courses, prep.warnings), importCompleted = true)
                                 }
                             }
                             ImportResult.Cancelled ->
@@ -79,12 +84,14 @@ class ImportViewModel(application: Application) : AndroidViewModel(application) 
                         _uiState.update { it.copy(conflict = prep) }
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: com.xmu.course.data.ImportEmptyException) {
-                Log.w(TAG, "解析结果为空：${e.warnings}")
                 _uiState.update { it.copy(message = e.message) }
             } catch (e: Exception) {
-                Log.e(TAG, "导入失败", e)
                 _uiState.update { it.copy(message = "$source 失败：${e.message}") }
+            } finally {
+                _uiState.update { it.copy(isImporting = false) }
             }
         }
     }
@@ -92,17 +99,24 @@ class ImportViewModel(application: Application) : AndroidViewModel(application) 
     /** 用户确认覆盖导入。 */
     fun confirmOverwrite() {
         val conflict = _uiState.value.conflict ?: return
-        _uiState.update { it.copy(conflict = null) }
+        _uiState.update { it.copy(conflict = null, isImporting = true) }
         viewModelScope.launch {
-            when (val r = repository.commitImport(conflict.semester, conflict.pendingCourses, overwrite = true)) {
-                is ImportResult.Success -> {
-                    timetableRepository.ensureForSemester(r.semesterId, conflict.semester.name, conflict.semester.startDate)
-                    _uiState.update {
-                        it.copy(message = importSuccessMessage(conflict.semester.name, r.count, conflict.pendingCourses))
+            try {
+                when (val r = repository.commitImport(conflict.semester, conflict.pendingCourses, overwrite = true)) {
+                    is ImportResult.Success -> {
+                        TimetablePrefs.setCurrent(getApplication(), r.timetableId)
+                        _uiState.update {
+                            it.copy(message = importSuccessMessage(conflict.semester.name, r.count, conflict.pendingCourses, conflict.warnings), importCompleted = true)
+                        }
                     }
+                    ImportResult.Cancelled -> _uiState.update { it.copy(message = "导入已取消") }
                 }
-                ImportResult.Cancelled ->
-                    _uiState.update { it.copy(message = "导入已取消") }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                _uiState.update { it.copy(message = "导入失败，请检查课表后重试") }
+            } finally {
+                _uiState.update { it.copy(isImporting = false) }
             }
         }
     }
@@ -116,11 +130,16 @@ class ImportViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(message = null) }
     }
 
+    fun importConsumed() {
+        _uiState.update { it.copy(importCompleted = false) }
+    }
+
     /** 成功提示：学期 + 课程数 + 周数范围。 */
-    private fun importSuccessMessage(semesterName: String, count: Int, courses: List<Course>): String {
+    private fun importSuccessMessage(semesterName: String, count: Int, courses: List<Course>, warnings: List<String>): String {
         val weeks = courses.flatMap { it.weeks }
         val range = if (weeks.isEmpty()) "" else "，第 ${weeks.min()}-${weeks.max()} 周"
-        return "导入成功：$semesterName，$count 门课程$range"
+        val warningText = if (warnings.isEmpty()) "" else "\n" + warnings.joinToString("\n")
+        return "导入成功：$semesterName，$count 门课程$range$warningText"
     }
 
     companion object {

@@ -46,17 +46,17 @@ class ExperienceRegressionTest {
 
     @Test
     fun timeRangeDisplayTest() {
-        assertEquals("08:00-08:45", TimeTableConfig.timeRange(1, 1))
-        assertEquals("08:00-09:40", TimeTableConfig.timeRange(1, 2))
-        assertEquals("08:00-11:50", TimeTableConfig.timeRange(1, 4))
-        assertEquals("14:30-16:10", TimeTableConfig.timeRange(5, 2))
+        assertEquals("08:30-09:10", TimeTableConfig.timeRange(1, 1))
+        assertEquals("08:30-10:00", TimeTableConfig.timeRange(1, 2))
+        assertEquals("08:30-11:50", TimeTableConfig.timeRange(1, 4))
+        assertEquals("12:00-14:10", TimeTableConfig.timeRange(5, 2))
     }
 
     @Test
     fun roomFullNamePreservedTest() = runTest {
         val html = javaClass.getResourceAsStream("/sample_mobile.html")!!
             .readBytes().toString(Charsets.UTF_8)
-        val preparation = repo.prepareImport(html) as ImportPreparation.Ready
+        val preparation = repo.prepareImport(XmuKingosoftParser().parse(html)) as ImportPreparation.Ready
         val parsed = preparation.courses.first { it.name.startsWith("大学物理实验") && it.weeks == (1..2).toSet() }
         assertEquals("海韵教学楼104", parsed.location)
 

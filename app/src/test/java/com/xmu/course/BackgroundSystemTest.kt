@@ -24,6 +24,16 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class BackgroundSystemTest {
 
+    @Test fun selectedImageIsCopiedIntoPrivateStorage() = runTest {
+        val source = java.io.File(context.cacheDir, "background-source-test")
+        source.writeBytes(byteArrayOf(1, 2, 3, 4))
+        val localUri = com.xmu.course.ui.background.BackgroundImageStore.copyToPrivateStorage(context, android.net.Uri.fromFile(source))
+        val localFile = java.io.File(android.net.Uri.parse(localUri).path!!)
+        assertTrue(localFile.canonicalPath.startsWith(context.filesDir.canonicalPath + java.io.File.separator))
+        assertTrue(source.absolutePath != localFile.absolutePath)
+        assertTrue(localFile.readBytes().contentEquals(source.readBytes()))
+    }
+
     private lateinit var context: Context
     private lateinit var db: AppDatabase
     private lateinit var repo: TimetableRepository

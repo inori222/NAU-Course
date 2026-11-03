@@ -1,8 +1,18 @@
 package com.xmu.course.ui.timetable
 
+import com.xmu.course.data.DisplaySettings
+import com.xmu.course.domain.Course
+
+/** 用户选择较小节数时，自动扩展以保留所有已有课程的位置。 */
+internal fun effectiveSectionCount(configured: Int, courses: List<Course>): Int {
+    val latestEnd = courses.asSequence().filter { it.startSection > 0 && it.duration > 0 }
+        .map { (it.startSection.toLong() + it.duration - 1).coerceAtMost(100).toInt() }
+        .maxOrNull() ?: 1
+    return maxOf(configured.coerceIn(1, DisplaySettings.MAX_CONFIGURABLE_SECTIONS), latestEnd)
+}
+
 /**
- * 作息时间配置（依据厦大实际作息：11 节制，"中午"为午休分隔行，不计节次）。
- * UI 展示通过 [xmuSections] 读取，不在布局/界面中硬编码。
+ * 作息时间配置。南审默认值依据学校公开课表查询页面；保留上游厦大作息供参考。
  */
 object TimeTableConfig {
 
@@ -22,11 +32,18 @@ object TimeTableConfig {
         "21:00-21:45", // 第11节（晚间）
     )
 
+    /** 南京审计大学公开课表查询页所列作息；校区差异仍需实际验证。 */
+    val nauSections: List<String> = listOf(
+        "08:30-09:10", "09:20-10:00", "10:20-11:00", "11:10-11:50", "12:00-12:40",
+        "13:30-14:10", "14:20-15:00", "15:20-16:00", "16:10-16:50", "17:00-17:40",
+        "18:30-19:10", "19:20-20:00", "20:10-20:50",
+    )
+
     /** 总节数。 */
-    val sectionCount: Int get() = xmuSections.size
+    val sectionCount: Int get() = nauSections.size
 
     /** 返回第 [section] 节时间；越界返回空串。 */
-    fun timeOf(section: Int): String = xmuSections.getOrNull(section - 1) ?: ""
+    fun timeOf(section: Int): String = nauSections.getOrNull(section - 1) ?: ""
 
     /** 按开始节次 + 持续节数返回完整上课时间（例如 1-4 节 => 08:00-11:50）。 */
     fun timeRange(startSection: Int, duration: Int): String =
@@ -35,8 +52,8 @@ object TimeTableConfig {
     /** 按开始/结束节次返回完整上课时间；任一节越界时回退单节时间。 */
     private fun timeRangeBetween(startSection: Int, endSection: Int): String {
         if (endSection < startSection) return timeOf(startSection)
-        val start = xmuSections.getOrNull(startSection - 1)?.substringBefore('-')
-        val end = xmuSections.getOrNull(endSection - 1)?.substringAfter('-')
+        val start = nauSections.getOrNull(startSection - 1)?.substringBefore('-')
+        val end = nauSections.getOrNull(endSection - 1)?.substringAfter('-')
         return if (start != null && end != null) "$start-$end" else timeOf(startSection)
     }
 }

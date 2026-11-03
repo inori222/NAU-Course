@@ -2,12 +2,16 @@ package com.xmu.course.data.local
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.Update
 import androidx.room.Query
 import com.xmu.course.domain.Course
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CourseDao {
+
+    @Update
+    suspend fun update(course: CourseEntity): Int
 
     @Query("SELECT * FROM courses WHERE semesterId = :semesterId ORDER BY dayOfWeek, startSection")
     fun observeBySemester(semesterId: Long): Flow<List<CourseEntity>>

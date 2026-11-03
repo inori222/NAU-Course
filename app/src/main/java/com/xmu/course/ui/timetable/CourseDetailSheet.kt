@@ -69,7 +69,7 @@ fun CourseDetailSheet(
                     .fillMaxWidth()
                     .padding(top = 12.dp),
             ) {
-                Text(if (isSkipped) "取消翘课" else "标记翘课")
+                Text(if (isSkipped) "取消本周翘课" else "标记本周翘课")
             }
             Text(
                 text = "课程颜色",

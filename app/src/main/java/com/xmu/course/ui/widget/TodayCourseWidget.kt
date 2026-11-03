@@ -55,6 +55,7 @@ fun TodayCourseContent(
     data: WidgetTimetableData,
     style: WidgetBackgroundStyle = WidgetTheme.defaultStyle,
 ) {
+    val remaining = WidgetRepository.remainingCourses(data.courses, data.nowMinuteOfDay)
     Box(
         modifier = GlanceModifier
             .fillMaxSize()
@@ -67,7 +68,7 @@ fun TodayCourseContent(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             Text(
-                text = "XMU Course",
+                text = "NAU Course",
                 style = widgetTextStyle(
                     color = WidgetTheme.textPrimary,
                     size = 13.sp,
@@ -85,9 +86,9 @@ fun TodayCourseContent(
             )
             Spacer(modifier = GlanceModifier.height(8.dp))
 
-            if (data.courses.isEmpty()) {
+            if (remaining.isEmpty()) {
                 Text(
-                    text = "今日无课程",
+                    text = "今日无剩余课程",
                     style = widgetTextStyle(
                         color = WidgetTheme.textSecondary,
                         size = 12.sp,
@@ -96,7 +97,7 @@ fun TodayCourseContent(
                 )
             } else {
                 LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
-                    items(data.courses) { course ->
+                    items(remaining) { course ->
                         TodayCourseItem(course)
                     }
                 }

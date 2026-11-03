@@ -6,14 +6,15 @@ import com.xmu.course.data.local.AppDatabase
 import com.xmu.course.data.local.CourseEntity
 import com.xmu.course.data.local.SemesterEntity
 import com.xmu.course.data.local.SkippedCourseEntity
+import com.xmu.course.data.local.TimetableEntity
+import com.xmu.course.data.local.TimetableConfigEntity
 import com.xmu.course.data.local.toDomain
 import com.xmu.course.data.local.toEntity
 import com.xmu.course.domain.Course
 import com.xmu.course.domain.CourseSource
 import com.xmu.course.domain.Semester
 import com.xmu.course.parser.ParsedCourse
-import com.xmu.course.parser.XmuKingosoftParser
-import com.xmu.course.parser.XmuParseResult
+import com.xmu.course.parser.ParseResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
@@ -28,6 +29,7 @@ sealed class ImportPreparation {
     data class Ready(
         val semester: Semester,
         val courses: List<Course>,
+        val warnings: List<String> = emptyList(),
     ) : ImportPreparation()
 
     data class Conflict(
@@ -35,6 +37,7 @@ sealed class ImportPreparation {
         val existingCount: Int,
         val newCount: Int,
         val pendingCourses: List<Course>,
+        val warnings: List<String> = emptyList(),
     ) : ImportPreparation()
 }
 
@@ -44,8 +47,6 @@ sealed class ImportPreparation {
  * 职责边界：查询、导入提交、删除；不负责 HTML 解析细节（委托 Parser）与 UI。
  */
 class CourseRepository(private val db: AppDatabase) {
-
-    private val parser = XmuKingosoftParser()
 
     /** 观察全部学期（code 降序）。 */
     fun observeSemesters(): Flow<List<Semester>> =
@@ -60,30 +61,30 @@ class CourseRepository(private val db: AppDatabase) {
     suspend fun getSemesters(): List<Semester> =
         db.semesterDao().getAll().map { it.toDomain() }
 
-    /** 原始解析入口（仅供需要警告信息时使用）。 */
-    suspend fun parseHtml(html: String): XmuParseResult = parser.parse(html)
-
     /**
-     * 解析 HTML 并判断是否与已有学期冲突。
+     * 接收解析层输出并判断是否与已有学期冲突；仓库不认识学校 HTML。
      * 同 code 学期已存在时返回 [ImportPreparation.Conflict]。
      */
-    suspend fun prepareImport(html: String): ImportPreparation {
-        val result = parser.parse(html)
-        Log.d(TAG, "parser: ${result.courses.size} 门课程, warnings=${result.warnings.size}")
+    suspend fun prepareImport(result: ParseResult): ImportPreparation {
+        if (result.failure != null) throw ImportEmptyException(result.warnings)
         val semester = Semester(code = result.semesterCode, name = result.semesterName)
         val courses = result.courses.map { it.toDomainCourse() }
         if (courses.isEmpty()) {
             throw ImportEmptyException(result.warnings)
         }
+        if (semester.code.isBlank() || semester.name.isBlank()) {
+            throw ImportEmptyException(result.warnings + "未识别到学期，请进入包含学期信息的课表页面")
+        }
         val existing = db.semesterDao().getByCode(semester.code)
         return if (existing == null) {
-            ImportPreparation.Ready(semester, courses)
+            ImportPreparation.Ready(semester, courses, result.warnings)
         } else {
             ImportPreparation.Conflict(
                 semester = existing.toDomain(),
                 existingCount = db.courseDao().countBySemester(existing.id),
                 newCount = courses.size,
                 pendingCourses = courses,
+                warnings = result.warnings,
             )
         }
     }
@@ -99,27 +100,32 @@ class CourseRepository(private val db: AppDatabase) {
         courses: List<Course>,
         overwrite: Boolean,
     ): ImportResult {
-        val dao = db.semesterDao()
-        val existing = dao.getByCode(semester.code)
-        val semesterId = if (existing != null) {
-            if (!overwrite) return ImportResult.Cancelled
-            existing.id
-        } else {
-            dao.insert(SemesterEntity(code = semester.code, name = semester.name))
-        }
-        db.withTransaction {
+        require(courses.isNotEmpty()) { "不能用空课程覆盖课表" }
+        return db.withTransaction {
+            val dao = db.semesterDao()
+            val existing = dao.getByCode(semester.code)
+            if (existing != null && !overwrite) return@withTransaction ImportResult.Cancelled
+            val semesterId = existing?.id ?: dao.insert(
+                SemesterEntity(code = semester.code, name = semester.name, startDate = semester.startDate, endDate = semester.endDate),
+            )
             db.courseDao().deleteBySemester(semesterId)
             db.courseDao().insertAll(courses.map { it.toEntity(semesterId) })
+            val timetableDao = db.timetableDao()
+            val timetableId = timetableDao.getBySemesterId(semesterId)?.id ?: timetableDao.insert(
+                TimetableEntity(name = semester.name, semesterId = semesterId, startDate = semester.startDate, createdTime = System.currentTimeMillis()),
+            ).also { timetableDao.upsertConfig(TimetableConfigEntity(timetableId = it, showSaturday = true, showSunday = true)) }
+            ImportResult.Success(semesterId, courses.size, timetableId)
         }
-        val dbCount = db.courseDao().countBySemester(semesterId)
-        Log.d(TAG, "insert: ${courses.size} 门 -> DB count=$dbCount (semesterId=$semesterId, overwrite=$overwrite)")
-        return ImportResult.Success(semesterId, courses.size)
     }
 
     /** 手动添加课程（MANUAL）。 */
     suspend fun addCourse(semesterId: Long, course: Course) {
         db.courseDao().insert(course.toEntity(semesterId))
     }
+
+    /** 原子保存完整课程，保留原有 ID 和学期。 */
+    suspend fun updateCourse(course: Course): Boolean =
+        db.courseDao().update(course.toEntity(course.semesterId)) == 1
 
     /** 更新课程颜色（用户自定义优先）。 */
     suspend fun updateCourseColor(courseId: Long, color: String) {
@@ -164,6 +170,8 @@ class CourseRepository(private val db: AppDatabase) {
     fun observeSkippedCourseIds(): Flow<Set<Long>> =
         db.skippedCourseDao().observeSkippedCourseIds().map { it.toSet() }
 
+    fun observeSkippedCourses(): Flow<List<SkippedCourseEntity>> = db.skippedCourseDao().observeAll()
+
     /** 保存课程管理页的翘课多选结果（事务内同步增删）。 */
     suspend fun saveSkippedCourses(courseIds: Collection<Long>) {
         val desired = courseIds.toSet()
@@ -179,15 +187,27 @@ class CourseRepository(private val db: AppDatabase) {
     }
 
     /** 课程详情：标记翘课。 */
-    suspend fun markCourseSkipped(courseId: Long) {
-        db.skippedCourseDao().insert(
-            SkippedCourseEntity(courseId = courseId, createdAt = System.currentTimeMillis()),
-        )
+    suspend fun markCourseSkipped(courseId: Long, week: Int = 0) {
+        require(week in 0..100)
+        db.withTransaction {
+            if (week > 0) db.skippedCourseDao().deleteForWeek(courseId, -week)
+            db.skippedCourseDao().insert(SkippedCourseEntity(courseId = courseId, createdAt = System.currentTimeMillis(), week = week))
+        }
     }
 
     /** 课程详情：取消翘课。 */
-    suspend fun unmarkCourseSkipped(courseId: Long) {
-        db.skippedCourseDao().deleteByCourseId(courseId)
+    suspend fun unmarkCourseSkipped(courseId: Long, week: Int = 0) {
+        require(week in 0..100)
+        db.withTransaction {
+            val dao = db.skippedCourseDao()
+            if (week == 0) dao.deleteByCourseId(courseId)
+            else {
+                dao.deleteForWeek(courseId, week)
+                if (dao.hasGlobalMark(courseId)) {
+                    dao.insert(SkippedCourseEntity(courseId = courseId, createdAt = System.currentTimeMillis(), week = -week))
+                }
+            }
+        }
     }
 
     /** 按课表观察全部课程（课程管理页 / 后续 Widget 用）。 */
@@ -238,7 +258,7 @@ class CourseRepository(private val db: AppDatabase) {
 }
 
 sealed class ImportResult {
-    data class Success(val semesterId: Long, val count: Int) : ImportResult()
+    data class Success(val semesterId: Long, val count: Int, val timetableId: Long) : ImportResult()
     data object Cancelled : ImportResult()
 }
 

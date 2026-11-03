@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -36,21 +37,26 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 导入入口页。
  *
- * - 打开厦大教务 WebView 登录并“保存课表”；
+ * - 打开南审教务 WebView，由用户登录后导入课表；
  * - 或选择本地 HTML 文件导入（测试/离线场景）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImportScreen(
     onOpenWebView: () -> Unit,
+    onImported: () -> Unit = {},
     viewModel: ImportViewModel = viewModel(),
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
+    val scope = rememberCoroutineScope()
 
     // 同学期覆盖导入确认对话框
     uiState.conflict?.let { conflict ->
@@ -58,7 +64,7 @@ fun ImportScreen(
             onDismissRequest = viewModel::cancelOverwrite,
             title = { Text("学期已存在") },
             text = {
-                Text("已导入过 ${conflict.semester.name}（${conflict.existingCount} 门课程）。\n是否删除旧课表并导入新的 ${conflict.newCount} 门课程？")
+                Text("已导入过 ${conflict.semester.name}（${conflict.existingCount} 门课程）。\n是否删除旧课表并导入新的 ${conflict.newCount} 门课程？" + if (conflict.warnings.isEmpty()) "" else "\n" + conflict.warnings.joinToString("\n"))
             },
             confirmButton = {
                 Button(onClick = viewModel::confirmOverwrite) { Text("覆盖") }
@@ -74,20 +80,19 @@ fun ImportScreen(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
         if (uri != null) {
-            val html = readHtmlFromUri(context, uri)
-            if (html != null) {
-                viewModel.saveImportedHtml(html)
-            } else {
-                viewModel.saveImportedHtml("")
+            scope.launch {
+                val html = withContext(Dispatchers.IO) { readHtmlFromUri(context, uri) }
+                viewModel.saveImportedHtml(html.orEmpty())
             }
         }
     }
 
-    LaunchedEffect(uiState.message) {
+    LaunchedEffect(uiState.message, uiState.importCompleted) {
         uiState.message?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.messageShown()
         }
+        if (uiState.importCompleted) { viewModel.importConsumed(); onImported() }
     }
 
     Scaffold(
@@ -103,19 +108,19 @@ fun ImportScreen(
         ) {
             ListItem(
                 headlineContent = { Text("方式一：从教务系统导入") },
-                supportingContent = { Text("登录厦大教务后点“保存课表”，全程本地处理") },
+                supportingContent = { Text("自行登录南京审计大学教务，进入我的课表后导入") },
             )
             Button(onClick = onOpenWebView, modifier = Modifier.height(48.dp)) {
                 Icon(Icons.Filled.CloudDownload, contentDescription = null)
                 Spacer(Modifier.padding(4.dp))
-                Text("打开厦大教务")
+                Text("打开南审教务")
             }
 
             ListItem(
                 headlineContent = { Text("方式二：选择本地 HTML 文件") },
                 supportingContent = { Text("适合离线导入与开发测试") },
             )
-            Button(onClick = { filePicker.launch(arrayOf("text/html")) }, modifier = Modifier.height(48.dp)) {
+            Button(onClick = { filePicker.launch(arrayOf("text/html")) }, enabled = !uiState.isImporting, modifier = Modifier.height(48.dp)) {
                 Icon(Icons.Filled.Description, contentDescription = null)
                 Spacer(Modifier.padding(4.dp))
                 Text("选择 HTML 文件")

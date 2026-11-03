@@ -33,14 +33,14 @@ fun WelcomeScreen(
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            "欢迎使用 XMU Course",
+            "欢迎使用 NAU Course",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            "厦门大学学生专属本地课表\n\n· 本地优先，无服务器\n· 不收集任何数据\n· 不保存账号密码",
+            "南京审计大学本地课表\n\n· 本地优先，无服务器\n· 不保存账号密码",
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -49,7 +49,7 @@ fun SkipCourseScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("翘课设置") },
+                title = { Text("所有周翘课设置") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")

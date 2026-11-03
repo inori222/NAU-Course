@@ -16,16 +16,16 @@ object SupportImageSaver {
         val bitmap = BitmapFactory.decodeResource(context.resources, resourceId) ?: return false
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, "$fileName.jpg")
-                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/XMU Course")
+                put(MediaStore.Images.Media.DISPLAY_NAME, "$fileName.png")
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/NAU Course")
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
             val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                 ?: return false
             runCatching {
                 resolver.openOutputStream(uri)?.use { output ->
-                    check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, output))
+                    check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output))
                 } ?: error("无法打开相册文件")
                 values.clear()
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
@@ -37,7 +37,7 @@ object SupportImageSaver {
             }
         } else {
             runCatching {
-                MediaStore.Images.Media.insertImage(resolver, bitmap, fileName, "XMU Course 支持开发") != null
+                MediaStore.Images.Media.insertImage(resolver, bitmap, fileName, "NAU Course 支持开发") != null
             }.getOrDefault(false)
         }
     }

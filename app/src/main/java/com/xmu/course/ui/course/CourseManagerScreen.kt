@@ -77,6 +77,7 @@ fun CourseManagerScreen(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var editTarget by remember { mutableStateOf<Course?>(null) }
+    var scheduleTarget by remember { mutableStateOf<Course?>(null) }
     var deleteTarget by remember { mutableStateOf<Course?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
@@ -176,6 +177,7 @@ fun CourseManagerScreen(
         CourseEditSheet(
             course = target,
             onDismiss = { editTarget = null },
+            onEditSchedule = { edited -> scheduleTarget = edited; editTarget = null },
             onSave = { name, teacher, location, note, color ->
                 viewModel.updateCourseName(target.id, name)
                 viewModel.updateCourseTeacher(target.id, teacher)
@@ -184,6 +186,14 @@ fun CourseManagerScreen(
                 viewModel.updateCourseColor(target.id, color)
                 editTarget = null
             },
+        )
+    }
+
+    scheduleTarget?.let { target ->
+        AddCourseDialog(
+            initial = target,
+            onDismiss = { scheduleTarget = null },
+            onSave = { viewModel.updateCourse(it); scheduleTarget = null },
         )
     }
 
@@ -333,6 +343,7 @@ internal fun weeksLabel(weeks: Set<Int>): String {
 private fun CourseEditSheet(
     course: Course,
     onDismiss: () -> Unit,
+    onEditSchedule: (Course) -> Unit,
     onSave: (name: String, teacher: String, location: String, note: String, color: String) -> Unit,
 ) {
     var name by remember { mutableStateOf(course.name) }
@@ -354,6 +365,9 @@ private fun CourseEditSheet(
             OutlinedTextField(teacher, { teacher = it }, label = { Text("教师") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(location, { location = it }, label = { Text("地点") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(note, { note = it }, label = { Text("备注") }, modifier = Modifier.fillMaxWidth())
+            TextButton(onClick = {
+                onEditSchedule(course.copy(name = name, teacher = teacher, location = location, note = note, color = color))
+            }) { Text("调整星期、节次和周次") }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 COLOR_PALETTE.forEach { candidate ->
                     val selected = candidate == color

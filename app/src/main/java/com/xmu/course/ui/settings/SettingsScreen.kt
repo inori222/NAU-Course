@@ -183,9 +183,9 @@ fun SettingsScreen(
             // ---- 关于 ----
             Card(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("关于 XMU Course", style = MaterialTheme.typography.titleMedium)
+                    Text("关于 NAU Course", style = MaterialTheme.typography.titleMedium)
                     Text("版本 v0.6.2", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp))
-                    Text("厦大学生本地课表 · Made for XMU students", modifier = Modifier.padding(top = 8.dp))
+                    Text("南京审计大学本地课表，基于 XMU Course", modifier = Modifier.padding(top = 8.dp))
                     Text("MIT License", modifier = Modifier.padding(top = 4.dp))
                     Button(
                         onClick = onOpenSupport,

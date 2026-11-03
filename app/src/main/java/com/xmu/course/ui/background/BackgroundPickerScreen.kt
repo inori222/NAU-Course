@@ -66,6 +66,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 data class BackgroundUiState(
     val timetableName: String? = null,
@@ -114,14 +115,25 @@ class BackgroundPickerViewModel(application: Application) : AndroidViewModel(app
         )
     }
 
-    fun useCustomImage(uri: String) = update {
-        it.copy(
-            backgroundType = BackgroundType.CUSTOM,
-            backgroundValue = uri,
-            blurRadius = BackgroundPipelineDefaults.BUILT_IN_BLUR_RADIUS_DP,
-            overlayColor = BackgroundPipelineDefaults.BUILT_IN_OVERLAY_COLOR,
-            overlayAlpha = BackgroundPipelineDefaults.BUILT_IN_OVERLAY_ALPHA,
-        )
+    fun useCustomImage(uri: String, onStored: () -> Unit, onError: () -> Unit) {
+        val config = _state.value.config ?: return
+        viewModelScope.launch {
+            try {
+                val localUri = BackgroundImageStore.copyToPrivateStorage(getApplication(), android.net.Uri.parse(uri))
+                repo.updateBackground(config.copy(
+                    backgroundType = BackgroundType.CUSTOM,
+                    backgroundValue = localUri,
+                    blurRadius = BackgroundPipelineDefaults.BUILT_IN_BLUR_RADIUS_DP,
+                    overlayColor = BackgroundPipelineDefaults.BUILT_IN_OVERLAY_COLOR,
+                    overlayAlpha = BackgroundPipelineDefaults.BUILT_IN_OVERLAY_ALPHA,
+                ))
+                onStored()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                onError()
+            }
+        }
     }
 }
 
@@ -137,14 +149,9 @@ fun BackgroundPickerScreen(
     val context = LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
-            }
-            viewModel.useCustomImage(uri.toString())
-            onOpenEditor()
+            viewModel.useCustomImage(uri.toString(), onStored = onOpenEditor, onError = {
+                android.widget.Toast.makeText(context, "无法保存背景图片，请重试", android.widget.Toast.LENGTH_SHORT).show()
+            })
         }
     }
 

@@ -21,7 +21,7 @@ android {
         buildToolsVersion = "36.0.0"
 
     defaultConfig {
-        applicationId = "com.xmu.course"
+        applicationId = "com.nau.course"
         minSdk = 26
         targetSdk = 35
         versionCode = 27

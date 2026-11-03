@@ -90,6 +90,18 @@ class CourseManagerViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
+    fun updateCourse(course: Course) {
+        val timetable = _uiState.value.timetable ?: return
+        if (course.semesterId != timetable.semesterId || course.id <= 0 || course.name.isBlank()) {
+            _uiState.update { it.copy(message = "课程信息无效") }
+            return
+        }
+        viewModelScope.launch {
+            val saved = courseRepo.updateCourse(course)
+            _uiState.update { it.copy(message = if (saved) "课程已保存" else "课程不存在") }
+        }
+    }
+
     fun updateCourseTeacher(courseId: Long, teacher: String) {
         viewModelScope.launch { courseRepo.updateCourseTeacher(courseId, teacher.trim()) }
     }

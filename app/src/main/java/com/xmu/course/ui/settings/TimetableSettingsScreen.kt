@@ -38,6 +38,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.xmu.course.domain.TextHorizontalAlignment
 import com.xmu.course.domain.TextVerticalAlignment
 import com.xmu.course.domain.TimetableConfig
+import com.xmu.course.data.DisplaySettings
+import kotlin.math.roundToInt
 
 private val horizontalOptions = listOf(
     TextHorizontalAlignment.START to "靠左",
@@ -61,6 +63,7 @@ fun TimetableSettingsScreen(
     viewModel: TimetableSettingsViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val sectionCount by DisplaySettings.sectionCount.collectAsState()
 
     Scaffold(
         topBar = {
@@ -105,6 +108,8 @@ fun TimetableSettingsScreen(
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
                         Text("显示设置", style = MaterialTheme.typography.titleMedium)
+                        Text("课表显示节数：$sectionCount（有更晚课程时自动扩展）")
+                        Slider(value = sectionCount.toFloat(), onValueChange = { viewModel.setSectionCount(it.roundToInt()) }, valueRange = 1f..13f, steps = 11)
                         Spacer(Modifier.height(4.dp))
                         ConfigSwitch("显示网格线", state.showGrid) { value ->
                             viewModel.setShowGrid(value)

@@ -64,6 +64,7 @@ import android.util.Log
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.xmu.course.domain.Course
 import com.xmu.course.domain.TimetableConfig
+import com.xmu.course.data.DisplaySettings
 import com.xmu.course.ui.background.TimetableBackground
 
 private val CELL_HEIGHT = 56.dp
@@ -119,10 +120,10 @@ fun TimetableScreen(
                             val suffix = if (pagerState.currentPage + 1 == state.actualWeek) " · 本周" else ""
                             "第 ${pagerState.currentPage + 1} 周$suffix ▼"
                         } else {
-                            state.timetable?.name ?: "XMU Course"
+                            state.timetable?.name ?: "NAU Course"
                         },
                         subtitle = if (state.hasData) {
-                            state.timetable?.name ?: "XMU Course"
+                            state.timetable?.name ?: "NAU Course"
                         } else {
                             "尚无数据，请先导入"
                         },
@@ -141,13 +142,13 @@ fun TimetableScreen(
                                     val suffix = if (pagerState.currentPage + 1 == state.actualWeek) " · 本周" else ""
                                     "第 ${pagerState.currentPage + 1} 周$suffix ▼"
                                 } else {
-                                    state.timetable?.name ?: "XMU Course"
+                                    state.timetable?.name ?: "NAU Course"
                                 },
                                 style = MaterialTheme.typography.titleLarge,
                                 modifier = Modifier.clickable(enabled = state.hasData) { showWeekPicker = true },
                             )
                             Text(
-                                text = if (state.hasData) state.timetable?.name ?: "XMU Course" else "尚无数据，请先导入",
+                                text = if (state.hasData) state.timetable?.name ?: "NAU Course" else "尚无数据，请先导入",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -178,7 +179,7 @@ fun TimetableScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    "暂无课程\n请先导入厦大课表，或点右上角 + 手动添加",
+                    "暂无课程\n请先导入南审课表，或点右上角 + 手动添加",
                     textAlign = TextAlign.Center,
                 )
             }
@@ -301,20 +302,21 @@ private fun TimetableWeekGrid(
     onCourseClick: (Course) -> Unit,
 ) {
     val cellHeight = config.courseHeight.dp
+    val configuredCount by DisplaySettings.sectionCount.collectAsState()
+    val sectionCount = effectiveSectionCount(configuredCount, courses)
     // TimeColumn 和 Grid 使用同一纵向布局配置，禁止各自独立推算高度。
-    val layoutConfig = TimetableLayoutConfig(cellHeight.value)
+    val layoutConfig = TimetableLayoutConfig(cellHeight.value, sectionCount)
     // showNonCurrentWeek=false 时隐藏非本周课程
     val layout = TimetableLayoutEngine.layoutForWeek(
         courses, week, onlyCurrentWeek = !config.showNonCurrentWeek,
     )
     val scrollState = rememberScrollState()
-    val sectionCount = TimeTableConfig.sectionCount
     val axisTypography = timeAxisTypography(cellHeight.value)
-    // 列顺序：周日（可选）+ 周一~周五 + 周六（可选），与金智一致
+    // 列顺序：周一到周日。
     val dayColumns: List<Int> = buildList {
-        if (config.showSunday) add(7)
         addAll(listOf(1, 2, 3, 4, 5))
         if (config.showSaturday) add(6)
+        if (config.showSunday) add(7)
     }
     val dayNames = mapOf(7 to "周日", 1 to "周一", 2 to "周二", 3 to "周三", 4 to "周四", 5 to "周五", 6 to "周六")
 
@@ -424,15 +426,10 @@ private fun DayColumn(
 ) {
     val cellHeight = config.courseHeight.dp
     BoxWithConstraints(
-        modifier = modifier.height(cellHeight * TimeTableConfig.sectionCount),
+        modifier = modifier.height(cellHeight * layoutConfig.sectionCount),
     ) {
         // 渲染顺序：先画 ghost（非本周淡化，独立布局），再画本周课程覆盖其上。
         val activeItems = items.filter { it.isCurrentWeek }
-        android.util.Log.d(
-            "XmuTimetable",
-            "DayColumn: active=${activeItems.size}, ghost=${items.size - activeItems.size}, " +
-                activeItems.joinToString { "${it.course.name}(d${it.course.dayOfWeek},s${it.course.startSection},dur${it.course.duration},lane${it.laneIndex}/${it.laneCount})" },
-        )
         val ghostItems = items.filter { !it.isCurrentWeek }
 
         // 网格只作为 Canvas 视觉层：不新增 padding/size，也不改变课程 Box 的约束。
@@ -469,13 +466,6 @@ private fun DayColumn(
             val renderHeight = layoutHeight
             val offsetX = slotWidth * item.laneIndex
             val offsetY = cellHeight * (course.startSection - 1)
-            android.util.Log.d(
-                "XmuTimetable",
-                "CourseCard: showGrid=$showGrid, name=${course.name}, duration=${course.duration}, " +
-                    "cellHeight=${cellHeight.value}dp, layoutHeight=${layoutHeight.value}dp, " +
-                    "renderHeight=${renderHeight.value}dp, lane=${item.laneIndex}/${item.laneCount}, " +
-                    "offsetX=${offsetX.value}dp, offsetY=${offsetY.value}dp, width=${slotWidth.value}dp",
-            )
             Box(
                 modifier = Modifier
                     .offset(x = offsetX, y = offsetY)

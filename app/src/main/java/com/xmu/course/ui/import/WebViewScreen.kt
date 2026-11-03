@@ -1,27 +1,35 @@
 package com.xmu.course.ui.import
 
 import android.annotation.SuppressLint
-import android.util.Log
-import android.view.ViewGroup
+import android.graphics.Bitmap
+import android.net.http.SslError
+import android.webkit.ConsoleMessage
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Save
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -31,168 +39,226 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.Dispatchers
+import com.xmu.course.parser.NauCourseParser
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import kotlin.coroutines.resume
 
-/** 厦门大学金智教务系统“我的课表”入口。 */
-const val XMU_JW_URL = "https://jw.xmu.edu.cn/gsapp/sys/wdkbapp/*default/index.do#/xskcb"
+/** 学校公开登录首页，不包含用户会话参数。 */
+const val NAU_JW_URL = "https://jwc.nau.edu.cn/"
 
-private const val TAG = "XmuImport"
-
-/**
- * 厦大教务 WebView 页面。
- *
- * - 用户自行登录，App 不模拟登录、不保存账密；
- * - Cookie 持久化（onPageFinished / doUpdateVisitedHistory 双点 flush）；
- * - FAB 抓取 DOM：轮询等待 AJAX 渲染完成（DOM 出现 arrage 节点）后再交给 ViewModel。
- */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun WebViewScreen(
-    onBack: () -> Unit,
-    viewModel: ImportViewModel = viewModel(),
-) {
-    val context = LocalContext.current
-    val snackbarHostState = remember { SnackbarHostState() }
+fun WebViewScreen(onBack: () -> Unit, onImported: () -> Unit = onBack, viewModel: ImportViewModel = viewModel()) {
+    val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val uiState by viewModel.uiState.collectAsState()
-
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    val state by viewModel.uiState.collectAsState()
+    var webView by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
-    var loadProgress by remember { mutableIntStateOf(0) }
-    var isLoading by remember { mutableStateOf(false) }
-    var isSaving by remember { mutableStateOf(false) }
+    var progress by remember { mutableIntStateOf(0) }
+    var saving by remember { mutableStateOf(false) }
+    var pageError by remember { mutableStateOf<String?>(null) }
+    var isCleartextPage by remember { mutableStateOf(false) }
+    var rendererGone by remember { mutableStateOf(false) }
+    val diagnostics = remember { WebDiagnostics(WEB_DIAGNOSTICS_ENABLED) }
+    val layoutRecovery = remember(scope) { NauLayoutRecovery(scope) }
+    var diagnosticReport by remember { mutableStateOf<String?>(null) }
+    var layoutAttempt by remember { mutableStateOf<String?>(null) }
+    val clipboard = LocalClipboardManager.current
 
-    BackHandler(enabled = canGoBack) { webViewRef?.goBack() }
-
-    LaunchedEffect(uiState.message) {
-        uiState.message?.let {
-            snackbarHostState.showSnackbar(it)
-            viewModel.messageShown()
-        }
+    diagnosticReport?.let { report ->
+        AlertDialog(
+            onDismissRequest = { diagnosticReport = null },
+            title = { Text("WebView 调试诊断") },
+            text = { Text("仅显示协议、已知主机和错误类别；路径、参数及控制台原文均已隐藏。\n\n$report", modifier = Modifier.verticalScroll(rememberScrollState())) },
+            confirmButton = { TextButton(onClick = { clipboard.setText(AnnotatedString(report)); diagnosticReport = null }) { Text("复制诊断") } },
+            dismissButton = { TextButton(onClick = { diagnosticReport = null }) { Text("关闭") } },
+        )
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        floatingActionButton = {
-            FloatingActionButton(onClick = {
-                val webView = webViewRef ?: return@FloatingActionButton
-                isSaving = true
-                scope.launch {
-                    val html = fetchRenderedHtml(webView)
-                    isSaving = false
-                    if (html.isNullOrBlank()) {
-                        Log.w(TAG, "抓取 DOM 失败")
-                        snackbarHostState.showSnackbar("获取页面失败，请确认已打开课表页面")
-                    } else {
-                        viewModel.saveCourseHtml(html)
+    BackHandler { if (canGoBack) webView?.goBack() else onBack() }
+    LaunchedEffect(state.message, state.importCompleted) {
+        state.message?.let { snackbar.showSnackbar(it); viewModel.messageShown() }
+        if (state.importCompleted) { viewModel.importConsumed(); onImported() }
+    }
+    state.conflict?.let { conflict ->
+        AlertDialog(
+            onDismissRequest = viewModel::cancelOverwrite,
+            title = { Text("该学期已存在课程，是否覆盖？") },
+            text = { Text("${conflict.semester.name}：已有 ${conflict.existingCount} 门，新导入 ${conflict.newCount} 门。" + if (conflict.warnings.isEmpty()) "" else "\n" + conflict.warnings.joinToString("\n")) },
+            confirmButton = { Button(onClick = viewModel::confirmOverwrite) { Text("覆盖") } },
+            dismissButton = { TextButton(onClick = viewModel::cancelOverwrite) { Text("取消") } },
+        )
+    }
+    Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            Row(Modifier.fillMaxWidth()) {
+                TextButton(onClick = { if (canGoBack) webView?.goBack() else onBack() }) { Text("返回") }
+                TextButton(onClick = { pageError = null; if (rendererGone) rendererGone = false else webView?.reload() }) { Text("重新加载") }
+                TextButton(enabled = !saving && !state.isImporting, onClick = {
+                    val current = webView ?: return@TextButton
+                    if (!viewModel.isParserConfigured) {
+                        scope.launch { snackbar.showSnackbar(NauCourseParser.ADAPTATION_MESSAGE) }
+                        return@TextButton
                     }
-                }
-            }) {
-                if (isSaving) {
-                    CircularProgressIndicator(Modifier.padding(12.dp))
-                } else {
-                    Icon(Icons.Filled.Save, contentDescription = "保存课表")
-                }
+                    saving = true
+                    scope.launch {
+                        try {
+                            val html = withTimeoutOrNull(12_000) {
+                                var ready: String? = null
+                                while (ready == null && webView === current) {
+                                    val candidate = evaluateDom(current)
+                                    if (candidate != null && viewModel.isTimetableReady(candidate)) ready = candidate
+                                    else delay(1200)
+                                }
+                                ready
+                            }
+                            if (html == null) snackbar.showSnackbar("课表尚未加载或无法读取课表 iframe，请进入我的课表后重试")
+                            else viewModel.saveCourseHtml(html)
+                        } finally { saving = false }
+                    }
+                }) { if (saving || state.isImporting) CircularProgressIndicator(Modifier.padding(4.dp)) else Text("导入课表") }
             }
-        },
-    ) { innerPadding ->
-        Column(Modifier.padding(innerPadding)) {
-            if (isLoading) {
-                LinearProgressIndicator(
-                    progress = { loadProgress / 100f },
-                    modifier = Modifier.fillMaxWidth(),
+            if (WEB_DIAGNOSTICS_ENABLED) {
+              Row {
+                TextButton(onClick = {
+                    val current = webView
+                    scope.launch {
+                        val inspection = if (current == null) "WebView 不可用" else try {
+                            DebugPageInspection.inspect(current)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            "页面结构检查不可用"
+                        }
+                        diagnosticReport = diagnostics.snapshot() + "\n\n" + inspection + (layoutAttempt?.let { "\n$it" } ?: "")
+                    }
+                }) { Text("查看调试诊断") }
+                TextButton(enabled = webView != null, onClick = {
+                    val current = webView ?: return@TextButton
+                    scope.launch {
+                        layoutAttempt = try {
+                            DebugPageInspection.tryResize(current)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            "布局试验：执行失败"
+                        }
+                        snackbar.showSnackbar("已完成布局试验，请观察页面并查看调试诊断")
+                    }
+                }) { Text("尝试恢复布局") }
+              }
+            }
+            if (progress in 1..99) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
+            if (isCleartextPage) {
+                Text(
+                    "当前网页使用 HTTP 明文连接，账号、密码和登录信息可能被窃取或篡改。请仅在可信网络使用。",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                        )
-                        settings.apply {
-                            javaScriptEnabled = true
-                            domStorageEnabled = true
-                            useWideViewPort = true
-                            loadWithOverviewMode = true
-                            // 教务页面登录跳转后避免命中过期缓存（Bug 2）。
-                            cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
-                        }
-                        WebSessionManager.attach(this)
-                        webChromeClient = object : WebChromeClient() {
-                            override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                loadProgress = newProgress
-                                isLoading = newProgress in 1..99
+            pageError?.let { Text(it, modifier = Modifier.padding(8.dp)) }
+            if (!rendererGone) AndroidView(modifier = Modifier.weight(1f).fillMaxWidth(), factory = { context ->
+                WebView(context).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+                    @Suppress("DEPRECATION")
+                    settings.savePassword = false
+                    settings.saveFormData = false
+                    WebSessionManager.attach(this)
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onProgressChanged(view: WebView?, newProgress: Int) { progress = newProgress }
+                        override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                            val level = message.messageLevel()
+                            if (level == ConsoleMessage.MessageLevel.ERROR || level == ConsoleMessage.MessageLevel.WARNING) {
+                                diagnostics.console(message.message(), message.sourceId(), message.lineNumber(), level == ConsoleMessage.MessageLevel.WARNING)
                             }
+                            // Do not forward raw page console text to application logs.
+                            return true
                         }
-                        webViewClient = object : WebViewClient() {
-                            override fun onPageFinished(view: WebView?, url: String?) {
-                                super.onPageFinished(view, url)
-                                canGoBack = view?.canGoBack() == true
-                                WebSessionManager.flushCookies()
-                            }
-
-                            override fun doUpdateVisitedHistory(
-                                view: WebView?,
-                                url: String?,
-                                isReload: Boolean,
-                            ) {
-                                super.doUpdateVisitedHistory(view, url, isReload)
-                                canGoBack = view?.canGoBack() == true
-                                // CAS 登录跳转链中途也可能产生 Cookie，双保险落盘。
-                                WebSessionManager.flushCookies()
-                            }
-                        }
-                        loadUrl(XMU_JW_URL)
-                        webViewRef = this
                     }
-                },
-                onRelease = { it.destroy() },
-            )
+                    webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                            if (request?.isForMainFrame == true) diagnostics.navigation("主页面导航", request.url.toString())
+                            return false
+                        }
+                        override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                            if (request?.url?.scheme.equals("http", ignoreCase = true)) diagnostics.cleartextResource(request?.url.toString())
+                            return null
+                        }
+                        override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                            super.onPageStarted(view, url, favicon)
+                            layoutRecovery.cancel()
+                            layoutAttempt = null
+                            diagnostics.navigation("主页面开始", url)
+                            isCleartextPage = url?.startsWith("http://", ignoreCase = true) == true
+                            pageError = null
+                        }
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            diagnostics.navigation("主页面完成", url)
+                            if (view != null && view.url == url) layoutRecovery.start(view)
+                            canGoBack = view?.canGoBack() == true
+                            WebSessionManager.flushCookies()
+                        }
+                        override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                            diagnostics.navigation("主页面历史更新", url)
+                            canGoBack = view?.canGoBack() == true
+                            WebSessionManager.flushCookies()
+                        }
+                        override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                            diagnostics.resource("网络错误", request?.url?.toString(), error?.errorCode ?: 0, request?.isForMainFrame == true)
+                            if (request?.isForMainFrame == true) pageError = "页面加载失败，请检查网络后重新加载"
+                        }
+                        override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, response: WebResourceResponse?) {
+                            diagnostics.resource("HTTP 错误", request?.url?.toString(), response?.statusCode ?: 0, request?.isForMainFrame == true)
+                            if (request?.isForMainFrame == true) pageError = "页面返回 HTTP 错误，请稍后重试"
+                        }
+                        override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
+                            diagnostics.resource("TLS 证书错误", error?.url, error?.primaryError ?: 0, false)
+                            pageError = "网页资源的安全证书验证失败，已停止加载该资源"
+                            handler?.cancel()
+                        }
+                        override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                            layoutRecovery.cancel()
+                            diagnostics.renderer(detail?.didCrash() == true)
+                            if (webView === view) webView = null
+                            canGoBack = false
+                            rendererGone = true
+                            pageError = "网页渲染进程已退出，请点击重新加载"
+                            return true
+                        }
+                    }
+                    loadUrl(NAU_JW_URL)
+                    webView = this
+                }
+            }, onRelease = {
+                layoutRecovery.cancel()
+                if (webView === it) webView = null
+                WebSessionManager.flushCookies()
+                if (!rendererGone) it.stopLoading()
+                it.destroy()
+            })
         }
     }
 }
 
-/** evaluateJavascript 的 suspend 封装，返回解码后的 HTML。 */
-private suspend fun evaluateDom(webView: WebView): String? =
-    withContext(Dispatchers.Main) {
-        suspendCancellableCoroutine { cont ->
-            webView.evaluateJavascript("document.documentElement.outerHTML") { result ->
-                cont.resume(
-                    runCatching { JSONObject("""{"h":$result}""").getString("h") }.getOrNull(),
-                )
-            }
-        }
+private suspend fun evaluateDom(webView: WebView): String? = suspendCancellableCoroutine { cont ->
+    webView.evaluateJavascript(NauDomCapture.script) { result ->
+        if (cont.isActive) cont.resume(runCatching {
+            JSONObject("""{"h":$result}""").opt("h").takeIf { it is String } as? String
+        }.getOrNull())
     }
-
-/**
- * 轮询等待金智 AJAX 渲染完成：DOM 出现课程节点（arrage）或日期表（kbckBottom）即认为就绪。
- * 最多等待 10 次 × 1.2s，避免用户在错误页面时无限等待。
- */
-private suspend fun fetchRenderedHtml(webView: WebView): String? {
-    repeat(10) { attempt ->
-        val html = evaluateDom(webView)
-        if (html != null && html.contains("arrage")) {
-            Log.d(TAG, "DOM 就绪 attempt=$attempt length=${html.length}")
-            return html
-        }
-        Log.d(TAG, "等待 AJAX 渲染 attempt=$attempt length=${html?.length ?: 0}")
-        delay(1200)
-    }
-    return null
 }
-
-

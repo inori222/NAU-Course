@@ -1,5 +1,7 @@
 package com.xmu.course
 
+import com.xmu.course.parser.XmuKingosoftParser
+
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -94,7 +96,7 @@ class TimetableRepositoryTest {
     @Test fun `导入后绑定课表且幂等`() = runTest {
         val html = javaClass.getResourceAsStream("/sample_timetable.html")!!
             .readBytes().toString(Charsets.UTF_8)
-        val prep = courseRepo.prepareImport(html) as ImportPreparation.Ready
+        val prep = courseRepo.prepareImport(XmuKingosoftParser().parse(html)) as ImportPreparation.Ready
         val r = courseRepo.commitImport(prep.semester, prep.courses, overwrite = false) as ImportResult.Success
 
         // 首次绑定 + 幂等
@@ -115,7 +117,7 @@ class TimetableRepositoryTest {
         // 课表 A：导入学期（38 门）
         val html = javaClass.getResourceAsStream("/sample_timetable.html")!!
             .readBytes().toString(Charsets.UTF_8)
-        val prep = courseRepo.prepareImport(html) as ImportPreparation.Ready
+        val prep = courseRepo.prepareImport(XmuKingosoftParser().parse(html)) as ImportPreparation.Ready
         val r = courseRepo.commitImport(prep.semester, prep.courses, overwrite = false) as ImportResult.Success
         val imported = repo.ensureForSemester(r.semesterId, prep.semester.name, prep.semester.startDate)
 
@@ -167,7 +169,7 @@ class TimetableRepositoryTest {
     @Test fun `删除导入课表保留学期与课程`() = runTest {
         val html = javaClass.getResourceAsStream("/sample_timetable.html")!!
             .readBytes().toString(Charsets.UTF_8)
-        val prep = courseRepo.prepareImport(html) as ImportPreparation.Ready
+        val prep = courseRepo.prepareImport(XmuKingosoftParser().parse(html)) as ImportPreparation.Ready
         val r = courseRepo.commitImport(prep.semester, prep.courses, overwrite = false) as ImportResult.Success
         val imported = repo.ensureForSemester(r.semesterId, prep.semester.name, prep.semester.startDate)
 

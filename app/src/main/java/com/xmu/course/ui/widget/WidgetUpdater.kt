@@ -47,7 +47,7 @@ object WidgetUpdater {
             }
         }
         appScope.launch {
-            db.skippedCourseDao().observeSkippedCourseIds().collectLatest {
+            db.skippedCourseDao().observeAll().collectLatest {
                 updateAll(appContext)
             }
         }

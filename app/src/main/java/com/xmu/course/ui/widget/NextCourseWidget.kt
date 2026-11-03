@@ -53,8 +53,13 @@ class NextCourseWidgetReceiver : GlanceAppWidgetReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         if (intent.action == ACTION_MINUTE_TICK) {
+            val pending = goAsync()
             CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
-                WidgetUpdater.updateAll(context)
+                try {
+                    WidgetUpdater.updateAll(context)
+                } finally {
+                    pending.finish()
+                }
             }
             WidgetUpdater.scheduleMinuteRefresh(context)
         }

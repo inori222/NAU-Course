@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -32,18 +34,19 @@ import com.xmu.course.parser.WeekPatternParser
 fun AddCourseDialog(
     onDismiss: () -> Unit,
     onSave: (Course) -> Unit,
+    initial: Course? = null,
 ) {
-    var name by remember { mutableStateOf("") }
-    var teacher by remember { mutableStateOf("") }
-    var location by remember { mutableStateOf("") }
-    var dayText by remember { mutableStateOf("星期一") }
-    var startSectionText by remember { mutableStateOf("1") }
-    var endSectionText by remember { mutableStateOf("2") }
-    var weeksText by remember { mutableStateOf("1-16周") }
+    var name by remember(initial) { mutableStateOf(initial?.name.orEmpty()) }
+    var teacher by remember(initial) { mutableStateOf(initial?.teacher.orEmpty()) }
+    var location by remember(initial) { mutableStateOf(initial?.location.orEmpty()) }
+    val dayNames = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+    var dayText by remember(initial) { mutableStateOf(initial?.dayOfWeek?.let { dayNames.getOrNull(it - 1) } ?: "星期一") }
+    var startSectionText by remember(initial) { mutableStateOf((initial?.startSection ?: 1).toString()) }
+    var endSectionText by remember(initial) { mutableStateOf(initial?.let { it.startSection + it.duration - 1 }?.toString() ?: "2") }
+    var weeksText by remember(initial) { mutableStateOf(initial?.weeks?.sorted()?.joinToString(",") ?: "1-16周") }
     var error by remember { mutableStateOf<String?>(null) }
 
     // dayOfWeek 约定与金智解析器一致：星期一=1 … 星期日=7。
-    val dayNames = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
 
     fun buildCourse(): Course? {
         val day = dayNames.indexOf(dayText) + 1
@@ -56,7 +59,7 @@ fun AddCourseDialog(
         ) {
             return null
         }
-        return Course(
+        return (initial ?: Course(
             name = name.trim(),
             teacher = teacher.trim(),
             location = location.trim(),
@@ -66,14 +69,15 @@ fun AddCourseDialog(
             weeks = weeks,
             source = CourseSource.MANUAL,
             color = CourseRepository.autoColor(name.trim()),
-        )
+        )).copy(name = name.trim(), teacher = teacher.trim(), location = location.trim(),
+            dayOfWeek = day, startSection = start, duration = duration, weeks = weeks)
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("添加课程") },
+        title = { Text(if (initial == null) "添加课程" else "调整课程时间") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("课程名称 *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(teacher, { teacher = it }, label = { Text("教师") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(location, { location = it }, label = { Text("地点") }, singleLine = true, modifier = Modifier.fillMaxWidth())

@@ -53,12 +53,12 @@ object WidgetRepository {
         val courses = timetable?.let { tt ->
             db.courseDao().getBySemester(tt.semesterId).map { it.toDomain() }
         }.orEmpty()
-        val skipped = db.skippedCourseDao().getSkippedCourseIds().toSet()
         val week = computeCurrentWeek(timetable, today)
+        val skipped = db.skippedCourseDao().getSkippedCourseIdsForWeek(week).toSet()
         val day = today.dayOfWeek.value
 
         return WidgetTimetableData(
-            timetableName = timetable?.name ?: "XMU Course",
+            timetableName = timetable?.name ?: "NAU Course",
             week = week,
             dayOfWeek = day,
             courses = filterTodayCourses(courses, skipped, week, day),
@@ -102,9 +102,17 @@ object WidgetRepository {
         dayOfWeek: Int,
     ): List<WidgetCourse> =
         courses
-            .filter { it.dayOfWeek == dayOfWeek && it.occursInWeek(week) }
+            .filter {
+                it.dayOfWeek == dayOfWeek && it.occursInWeek(week) &&
+                    it.startSection in 1..TimeTableConfig.sectionCount && it.duration > 0 &&
+                    it.duration <= TimeTableConfig.sectionCount - it.startSection + 1
+            }
             .map { it.toWidgetCourse(skippedIds) }
             .sortedBy { it.startMinuteOfDay }
+
+    /** 今日 Widget 保留正在进行和尚未开始的课程。 */
+    fun remainingCourses(courses: List<WidgetCourse>, nowMinuteOfDay: Int): List<WidgetCourse> =
+        courses.filter { it.endMinuteOfDay > nowMinuteOfDay }
 
     /** 寻找今天下一节未开始课程。 */
     fun findNextCourse(courses: List<WidgetCourse>, nowMinuteOfDay: Int): WidgetCourse? =

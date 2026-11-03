@@ -3,24 +3,33 @@ package com.xmu.course
 import com.xmu.course.domain.Timetable
 import com.xmu.course.ui.timetable.TimeTableConfig
 import com.xmu.course.ui.timetable.TimetableViewModel
+import com.xmu.course.ui.timetable.effectiveSectionCount
+import com.xmu.course.domain.Course
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.LocalDate
 
 class TimeTableConfigTest {
 
-    @Test fun `厦大作息为11节`() {
-        assertEquals(11, TimeTableConfig.sectionCount)
+    @Test fun `自定义节数不会裁掉已有课程`() {
+        val late = Course(name = "晚课", dayOfWeek = 1, startSection = 12, duration = 2, weeks = setOf(1))
+        assertEquals(8, effectiveSectionCount(8, emptyList()))
+        assertEquals(13, effectiveSectionCount(8, listOf(late)))
+        assertEquals(14, effectiveSectionCount(8, listOf(late.copy(startSection = 13))))
+    }
+
+    @Test fun `南审公开作息为13节`() {
+        assertEquals(13, TimeTableConfig.sectionCount)
         assertEquals(11, TimeTableConfig.xmuSections.size)
     }
 
     @Test fun `节次时间与作息一致`() {
-        assertEquals("08:00-08:45", TimeTableConfig.timeOf(1))
-        assertEquals("11:05-11:50", TimeTableConfig.timeOf(4))
-        assertEquals("14:30-15:15", TimeTableConfig.timeOf(5))
-        assertEquals("21:00-21:45", TimeTableConfig.timeOf(11))
+        assertEquals("08:30-09:10", TimeTableConfig.timeOf(1))
+        assertEquals("11:10-11:50", TimeTableConfig.timeOf(4))
+        assertEquals("12:00-12:40", TimeTableConfig.timeOf(5))
+        assertEquals("20:10-20:50", TimeTableConfig.timeOf(13))
         assertEquals("", TimeTableConfig.timeOf(0))
-        assertEquals("", TimeTableConfig.timeOf(12))
+        assertEquals("", TimeTableConfig.timeOf(14))
     }
 }
 

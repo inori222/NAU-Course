@@ -13,6 +13,7 @@ import com.xmu.course.ui.AppRoutes
 import com.xmu.course.ui.AppDestination
 import com.xmu.course.ui.guide.UserGuideScreen
 import com.xmu.course.ui.support.SupportScreen
+import com.xmu.course.ui.support.SUPPORT_IMAGES
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -49,17 +50,24 @@ class GuideSupportTest {
     fun supportNavigationTest() {
         assertEquals("support", AppRoutes.SUPPORT)
         composeRule.setContent { MaterialTheme { SupportScreen(onBack = {}) } }
-        composeRule.onNodeWithText("支持 XMU Course").assertIsDisplayed()
+        composeRule.onNodeWithText("支持 NAU Course").assertIsDisplayed()
     }
 
     @Test
     fun qrResourceLoadTest() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val resources = listOf(R.drawable.alipay_qr, R.drawable.wechat_qr)
+        val resources = listOf(R.drawable.alipay_qr, R.drawable.wechat_qr, R.drawable.nau_maintainer_wechat)
         resources.forEach { id ->
             val bitmap = context.resources.openRawResource(id).use(BitmapFactory::decodeStream)
             assertNotNull(bitmap)
             assertTrue(bitmap!!.width > 0 && bitmap.height > 0)
         }
+    }
+
+    @Test
+    fun supportPaymentLabelsMatchActualImages() {
+        assertEquals(R.drawable.nau_maintainer_wechat, SUPPORT_IMAGES.single { it.title == "微信支付 · NAU 适配维护者" }.resourceId)
+        assertEquals(R.drawable.wechat_qr, SUPPORT_IMAGES.single { it.title == "支付宝 · XMU 原作者" }.resourceId)
+        assertEquals(R.drawable.alipay_qr, SUPPORT_IMAGES.single { it.title == "微信支付 · XMU 原作者" }.resourceId)
     }
 }

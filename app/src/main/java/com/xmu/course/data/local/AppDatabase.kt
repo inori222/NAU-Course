@@ -8,11 +8,11 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
- * 应用数据库。导出 schema 目录暂未配置，破坏性变更期间 fallbackToDestructiveMigration。
+ * 应用数据库，版本更新必须提供迁移，不启用破坏性回退。
  */
 @Database(
     entities = [SemesterEntity::class, CourseEntity::class, TimetableEntity::class, TimetableConfigEntity::class, SkippedCourseEntity::class],
-    version = 9,
+    version = 10,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -32,7 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "xmu_course.db",
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                     .build().also { instance = it }
             }
 
@@ -156,6 +156,14 @@ abstract class AppDatabase : RoomDatabase() {
         /**
          * v8 -> v9：新增本地翘课状态；旧用户默认没有任何标记。
          */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE skipped_courses ADD COLUMN week INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("DROP INDEX IF EXISTS index_skipped_courses_courseId")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_skipped_courses_courseId_week ON skipped_courses(courseId, week)")
+            }
+        }
+
         val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(

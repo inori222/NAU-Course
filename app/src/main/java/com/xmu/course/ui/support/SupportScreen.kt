@@ -48,17 +48,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.xmu.course.R
 
-private const val PROJECT_URL = "https://github.com/your-name/XMU-Course"
+private const val PROJECT_URL = "https://github.com/inori222/NAU-Course"
 
-private data class SupportImage(
+internal data class SupportImage(
     @DrawableRes val resourceId: Int,
     val title: String,
     val fileName: String,
+    val description: String,
 )
 
-private val SUPPORT_IMAGES = listOf(
-    SupportImage(R.drawable.alipay_qr, "支付宝", "xmu-course-alipay"),
-    SupportImage(R.drawable.wechat_qr, "微信支付", "xmu-course-wechat"),
+internal val SUPPORT_IMAGES = listOf(
+    SupportImage(R.drawable.nau_maintainer_wechat, "微信支付 · NAU 适配维护者", "nau-course-wechat", "支持本项目的南审适配与后续维护。"),
+    // 上游资源文件名与图片内的支付方式相反；以图片实际内容为准。
+    SupportImage(R.drawable.wechat_qr, "支付宝 · XMU 原作者", "xmu-course-alipay", "支持上游 XMU-Course 原项目。"),
+    SupportImage(R.drawable.alipay_qr, "微信支付 · XMU 原作者", "xmu-course-wechat", "支持上游 XMU-Course 原项目。"),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -121,9 +124,9 @@ fun SupportScreen(onBack: () -> Unit) {
             modifier = Modifier.padding(padding),
         ) {
             item {
-                Text("支持 XMU Course", style = MaterialTheme.typography.headlineSmall)
+                Text("支持 NAU Course", style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    "XMU Course 是一个面向厦大学生的开源课表项目。如果这个项目帮助到了你，欢迎支持开发。",
+                    "NAU Course 面向南京审计大学同学，基于开源项目 XMU-Course 适配和改制。感谢原项目的贡献；如本应用对你有帮助，可以自愿支持南审适配维护者或 XMU 原作者。",
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
@@ -131,6 +134,7 @@ fun SupportScreen(onBack: () -> Unit) {
                 Card {
                     Column(Modifier.padding(12.dp)) {
                         Text(image.title, style = MaterialTheme.typography.titleMedium)
+                        Text(image.description, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
                         Image(
                             painter = painterResource(image.resourceId),
                             contentDescription = "${image.title}收款码",
@@ -167,7 +171,7 @@ fun SupportScreen(onBack: () -> Unit) {
             }
             item {
                 Text(
-                    "你的支持将用于：项目维护、功能开发、测试设备和开源服务费用。",
+                    "赞助完全自愿。请留意各收款码对应的维护者，转账前核对收款信息。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

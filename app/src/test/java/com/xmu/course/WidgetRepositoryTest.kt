@@ -28,6 +28,18 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class WidgetRepositoryTest {
 
+    @Test
+    fun remainingCoursesTest() = runTest {
+        val monday = today.dayOfWeek.value
+        insert("上午课", monday, 1)
+        insert("第十三节", monday, 13, duration = 1)
+        insert("超出节次", monday, 13, duration = 2)
+        val data = WidgetRepository.loadToday(ApplicationProvider.getApplicationContext(), today, LocalTime.of(10, 0), db)
+        assertEquals(listOf("第十三节"), WidgetRepository.remainingCourses(data.courses, data.nowMinuteOfDay).map { it.name })
+        assertEquals("20:10", data.courses.last().startTime)
+        assertTrue(WidgetRepository.remainingCourses(data.courses, 20 * 60 + 50).isEmpty())
+    }
+
     private lateinit var db: AppDatabase
     private lateinit var courseRepo: CourseRepository
     private lateinit var timetableRepo: TimetableRepository
@@ -101,7 +113,7 @@ class WidgetRepositoryTest {
         assertEquals(monday, data.dayOfWeek)
         assertEquals(2, data.courses.size)
         assertEquals("大学物理实验", data.courses.first().name)
-        assertEquals("08:00", data.courses.first().startTime)
+        assertEquals("08:30", data.courses.first().startTime)
     }
 
     @Test
@@ -120,8 +132,8 @@ class WidgetRepositoryTest {
 
         assertEquals("下午课", next?.name)
         assertEquals(afternoonId, next?.id)
-        assertEquals("14:30", next?.startTime)
-        assertEquals("还有4小时30分钟", WidgetRepository.countdownText(data.nowMinuteOfDay, next))
+        assertEquals("12:00", next?.startTime)
+        assertEquals("还有2小时0分钟", WidgetRepository.countdownText(data.nowMinuteOfDay, next))
     }
 
     @Test
@@ -190,7 +202,7 @@ class WidgetRepositoryTest {
         insert("今日课程", monday, 5)
         val data = WidgetRepository.loadToday(ApplicationProvider.getApplicationContext(), today, LocalTime.of(7, 0), db)
         assertEquals("星期一", data.dayOfWeek.toChineseDay())
-        assertEquals("14:30", data.courses.single().startTime)
+        assertEquals("12:00", data.courses.single().startTime)
     }
 
     @Test

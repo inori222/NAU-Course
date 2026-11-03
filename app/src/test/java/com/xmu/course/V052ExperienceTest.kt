@@ -1,5 +1,7 @@
 package com.xmu.course
 
+import com.xmu.course.parser.XmuKingosoftParser
+
 import android.app.Application
 import android.content.Context
 import androidx.compose.foundation.layout.Box
@@ -85,7 +87,7 @@ class V052ExperienceTest {
             val repo = CourseRepository(db)
             val html = javaClass.getResourceAsStream("/sample_mobile.html")!!
                 .readBytes().toString(Charsets.UTF_8)
-            val prep = repo.prepareImport(html) as ImportPreparation.Ready
+            val prep = repo.prepareImport(XmuKingosoftParser().parse(html)) as ImportPreparation.Ready
             val parsed = prep.courses.first { it.name.startsWith("大学物理实验") && it.weeks == (1..2).toSet() }
             assertEquals("海韵教学楼104", parsed.location)
 

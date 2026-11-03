@@ -28,5 +28,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "XMU Course"
+rootProject.name = "NAU Course"
 include(":app")

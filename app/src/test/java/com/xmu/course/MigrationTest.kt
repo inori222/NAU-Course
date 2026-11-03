@@ -30,6 +30,36 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class MigrationTest {
 
+    @Test fun `v9翘课标记迁移后保留并支持不同周`() {
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(ApplicationProvider.getApplicationContext())
+                .name(null)
+                .callback(object : SupportSQLiteOpenHelper.Callback(9) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        db.execSQL("CREATE TABLE skipped_courses (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, courseId INTEGER NOT NULL, createdAt INTEGER NOT NULL)")
+                        db.execSQL("CREATE UNIQUE INDEX index_skipped_courses_courseId ON skipped_courses(courseId)")
+                        db.execSQL("INSERT INTO skipped_courses(courseId, createdAt) VALUES (42, 1234)")
+                    }
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                }).build(),
+        )
+        try {
+            val db = helper.writableDatabase
+            AppDatabase.MIGRATION_9_10.migrate(db)
+            db.query("SELECT courseId, createdAt, week FROM skipped_courses").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(42, cursor.getInt(0))
+                assertEquals(1234, cursor.getInt(1))
+                assertEquals(0, cursor.getInt(2))
+            }
+            db.execSQL("INSERT INTO skipped_courses(courseId, createdAt, week) VALUES (42, 1235, 2)")
+            db.query("SELECT COUNT(*) FROM skipped_courses WHERE courseId = 42").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(2, cursor.getInt(0))
+            }
+        } finally { helper.close() }
+    }
+
     private val dbName = "migration-test.db"
     private lateinit var context: Context
 
@@ -93,7 +123,7 @@ class MigrationTest {
         createV1Schema()
 
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10)
             .allowMainThreadQueries()
             .build()
 
@@ -139,6 +169,7 @@ class MigrationTest {
                 AppDatabase.MIGRATION_6_7,
                 AppDatabase.MIGRATION_7_8,
                 AppDatabase.MIGRATION_8_9,
+                AppDatabase.MIGRATION_9_10,
             )
             .allowMainThreadQueries()
             .build()

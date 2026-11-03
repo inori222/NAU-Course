@@ -15,9 +15,9 @@ import org.jsoup.nodes.Element
  *
  * 解析以 .arrage 为主驱动，任何局部异常降级为 warning，整体不抛异常。
  */
-class XmuKingosoftParser {
+class XmuKingosoftParser : CourseParser {
 
-    fun parse(html: String): XmuParseResult {
+    override fun parse(html: String): ParseResult {
         val warnings = mutableListOf<String>()
         if (html.isBlank()) {
             return XmuParseResult("", "", emptyList(), listOf("输入 HTML 为空"))

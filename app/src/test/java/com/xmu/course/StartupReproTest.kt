@@ -26,7 +26,7 @@ class StartupReproTest {
     @Test fun `冷启动到主界面不崩溃`() {
         // 1. 欢迎页渲染
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("欢迎使用 XMU Course").assertExists()
+        composeRule.onNodeWithText("欢迎使用 NAU Course").assertExists()
 
         // 2. 点击"开始导入课表" → 进入主界面（触发 TimetableScreen + ViewModel + Room）
         composeRule.onNodeWithText("开始导入课表").performClick()

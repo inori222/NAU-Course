@@ -14,6 +14,11 @@ object DisplaySettings {
     private const val KEY_SHOW_GRID = "show_grid"
     private const val KEY_ONLY_CURRENT = "only_current_week"
     private const val KEY_HIDE_WEEKEND = "hide_weekend"
+    private const val KEY_SECTION_COUNT = "section_count"
+    const val MAX_CONFIGURABLE_SECTIONS = 13
+
+    private val _sectionCount = MutableStateFlow(MAX_CONFIGURABLE_SECTIONS)
+    val sectionCount: StateFlow<Int> = _sectionCount.asStateFlow()
 
     private val _showGrid = MutableStateFlow(true)
     val showGrid: StateFlow<Boolean> = _showGrid.asStateFlow()
@@ -30,6 +35,13 @@ object DisplaySettings {
         _showGrid.value = prefs.getBoolean(KEY_SHOW_GRID, true)
         _onlyCurrentWeek.value = prefs.getBoolean(KEY_ONLY_CURRENT, false)
         _hideWeekend.value = prefs.getBoolean(KEY_HIDE_WEEKEND, false)
+        _sectionCount.value = prefs.getInt(KEY_SECTION_COUNT, MAX_CONFIGURABLE_SECTIONS).coerceIn(1, MAX_CONFIGURABLE_SECTIONS)
+    }
+
+    fun setSectionCount(context: Context, value: Int) {
+        val normalized = value.coerceIn(1, MAX_CONFIGURABLE_SECTIONS)
+        _sectionCount.value = normalized
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_SECTION_COUNT, normalized).apply()
     }
 
     fun setShowGrid(context: Context, value: Boolean) {

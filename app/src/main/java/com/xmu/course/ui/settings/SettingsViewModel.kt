@@ -4,12 +4,15 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.xmu.course.data.CourseRepository
+import com.xmu.course.data.TimetablePrefs
+import com.xmu.course.data.TimetableRepository
 import com.xmu.course.data.local.AppDatabase
 import com.xmu.course.domain.Semester
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 data class SettingsUiState(
@@ -21,19 +24,17 @@ data class SettingsUiState(
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = CourseRepository(AppDatabase.getInstance(application))
+    private val timetableRepository = TimetableRepository(AppDatabase.getInstance(application))
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
-        refresh()
-    }
-
-    fun refresh() {
         viewModelScope.launch {
-            // 排除自定义课表使用的隐藏学期（code = custom-*）。
-            val semester = repository.getSemesters().filterNot { it.code.startsWith("custom-") }.maxByOrNull { it.code }
-            _uiState.update { it.copy(semester = semester) }
+            combine(TimetablePrefs.currentTimetableId, timetableRepository.observeTimetables(), repository.observeSemesters()) { currentId, timetables, semesters ->
+                val selected = timetables.firstOrNull { it.timetable.id == currentId } ?: timetables.firstOrNull()
+                semesters.firstOrNull { it.id == selected?.timetable?.semesterId }
+            }.collect { semester -> _uiState.update { it.copy(semester = semester) } }
         }
     }
 
@@ -42,7 +43,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val semester = _uiState.value.semester ?: return
         viewModelScope.launch {
             repository.updateSemesterStartDate(semester.id, date)
-            refresh()
             _uiState.update { it.copy(message = "开学日期已保存：$date") }
         }
     }
@@ -61,7 +61,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 repository.deleteSemesterCourses(semester.id)
                 _uiState.update { it.copy(message = "已删除课程（学期记录保留）") }
             }
-            refresh()
         }
     }
 

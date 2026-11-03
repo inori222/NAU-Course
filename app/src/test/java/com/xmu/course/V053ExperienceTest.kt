@@ -65,7 +65,7 @@ class V053ExperienceTest {
             }
         }
         rule.waitForIdle()
-        assertTrue(rule.onAllNodesWithText("08:00-11:50", useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        assertTrue(rule.onAllNodesWithText("08:30-11:50", useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         rule.onNodeWithText("@海韵教学楼104", useUnmergedTree = true).assertExists()
         rule.onNodeWithText("张老师", useUnmergedTree = true).assertExists()
     }
@@ -130,7 +130,10 @@ class V053ExperienceTest {
         TimetablePrefs.load(context)
         TimetablePrefs.setCurrent(context, timetable)
         rule.setContent { MaterialTheme { TimetableSettingsScreen(onBack = {}) } }
-        rule.waitForIdle()
+        // Room Flow 在 Compose 空闲后仍可能异步加载；等待实际课表出现再执行滚动。
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithText("滚动测试课表", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
         rule.onRoot().performTouchInput { swipeUp() }
         rule.onNodeWithText("紧凑顶部栏", useUnmergedTree = true).assertExists()
     }

@@ -44,6 +44,5 @@ object WebSessionManager {
             clearHistory()
         }
         WebStorage.getInstance().deleteAllData()
-        context.cacheDir.deleteRecursively()
     }
 }

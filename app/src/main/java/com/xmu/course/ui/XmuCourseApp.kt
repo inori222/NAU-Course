@@ -126,8 +126,8 @@ fun XmuCourseApp(
                     onInitialCourseConsumed = onInitialCourseConsumed,
                 )
             }
-            composable(AppDestination.Import.route) { ImportScreen(onOpenWebView = { navController.navigate("webview") }) }
-            composable("webview") { WebViewScreen(onBack = { navController.popBackStack() }) }
+            composable(AppDestination.Import.route) { ImportScreen(onOpenWebView = { navController.navigate("webview") }, onImported = { navController.popBackStack(AppRoutes.TIMETABLE, false) }) }
+            composable("webview") { WebViewScreen(onBack = { navController.popBackStack() }, onImported = { navController.popBackStack(AppRoutes.TIMETABLE, false) }) }
             composable(AppDestination.Settings.route) {
                 SettingsScreen(
                     onOpenTimetableManager = { navController.navigate("timetable_manager") },

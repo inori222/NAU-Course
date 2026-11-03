@@ -34,6 +34,8 @@ data class TimetableSettingsUiState(
 @OptIn(ExperimentalCoroutinesApi::class)
 class TimetableSettingsViewModel(application: Application) : AndroidViewModel(application) {
 
+    fun setSectionCount(value: Int) = DisplaySettings.setSectionCount(getApplication(), value)
+
     private val timetableRepo = TimetableRepository(AppDatabase.getInstance(application))
 
     private val _uiState = MutableStateFlow(TimetableSettingsUiState())
