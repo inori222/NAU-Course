@@ -174,7 +174,7 @@ fun TimetableScreen(
                 contentAlignment = Alignment.Center,
             ) { Text("还没有课表\n去“导入”页保存课表，或在“设置 → 课表管理”新建", textAlign = TextAlign.Center) }
 
-            state.courses.isEmpty() -> Box(
+            state.courses.isEmpty() && state.exams.isEmpty() -> Box(
                 Modifier.fillMaxSize().padding(innerPadding),
                 contentAlignment = Alignment.Center,
             ) {
@@ -188,14 +188,22 @@ fun TimetableScreen(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
             ) { page ->
-                TimetableWeekGrid(
-                    week = page + 1,
-                    courses = state.courses,
-                    skippedCourseIds = state.skippedCourseIds,
-                    showGrid = state.showGrid,
-                    config = state.config,
-                    onCourseClick = { detailCourse = it },
-                )
+                Column {
+                    val timetable = state.timetable
+                    if (state.exams.isNotEmpty() && timetable != null) {
+                        WeekExams(state.exams, timetable.startDate, page + 1) { exam ->
+                            viewModel.removeExam(timetable.semesterId, exam)
+                        }
+                    }
+                    TimetableWeekGrid(
+                        week = page + 1,
+                        courses = state.courses,
+                        skippedCourseIds = state.skippedCourseIds,
+                        showGrid = state.showGrid,
+                        config = state.config,
+                        onCourseClick = { detailCourse = it },
+                    )
+                }
             }
         }
     }

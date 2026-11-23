@@ -5,6 +5,9 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.xmu.course.data.CourseRepository
+import com.xmu.course.data.ExamRepository
+import com.xmu.course.data.ExamImportPreview
+import com.xmu.course.parser.NauExamParser
 import com.xmu.course.data.ImportPreparation
 import com.xmu.course.data.ImportResult
 import com.xmu.course.data.TimetablePrefs
@@ -27,6 +30,7 @@ private const val TAG = "XmuImport"
 data class ImportUiState(
     val message: String? = null,
     val conflict: ImportPreparation.Conflict? = null,
+    val examPreview: ExamImportPreview? = null,
     val importCompleted: Boolean = false,
     val isImporting: Boolean = false,
 )
@@ -37,6 +41,44 @@ data class ImportUiState(
 class ImportViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = CourseRepository(AppDatabase.getInstance(application))
+    private val exams = ExamRepository(AppDatabase.getInstance(application))
+    private val examParser = NauExamParser()
+
+    suspend fun isExamReady(html: String) = withContext(Dispatchers.Default) { examParser.hasExamRows(html) }
+
+    fun previewExams(html: String) = runExamImport {
+        val schedule = withContext(Dispatchers.Default) { examParser.parse(html) }
+        val preview = exams.preview(schedule)
+        _uiState.update { it.copy(examPreview = preview) }
+    }
+
+    fun cancelExams() { _uiState.update { it.copy(examPreview = null) } }
+
+    fun confirmExams() = runExamImport {
+        val preview = _uiState.value.examPreview ?: return@runExamImport
+        cancelExams()
+        val timetableId = exams.commit(preview)
+        TimetablePrefs.setCurrent(getApplication(), timetableId)
+        _uiState.update { it.copy(importCompleted = true) }
+    }
+
+    private fun runExamImport(action: suspend () -> Unit) {
+        if (_uiState.value.isImporting) return
+        _uiState.update { it.copy(isImporting = true) }
+        viewModelScope.launch {
+            try {
+                action()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: IllegalArgumentException) {
+                _uiState.update { it.copy(message = error.message ?: "无法读取考试日程") }
+            } catch (_: Exception) {
+                _uiState.update { it.copy(message = "考试导入失败，请重新预览") }
+            } finally {
+                _uiState.update { it.copy(isImporting = false) }
+            }
+        }
+    }
     private val parser = NauCourseParser(NauStudentPageAdapter())
     val isParserConfigured: Boolean get() = parser.isConfigured
     suspend fun isTimetableReady(html: String): Boolean =

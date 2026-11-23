@@ -59,7 +59,7 @@ const val NAU_JW_URL = "https://jwc.nau.edu.cn/"
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun WebViewScreen(onBack: () -> Unit, onImported: () -> Unit = onBack, viewModel: ImportViewModel = viewModel()) {
+fun WebViewScreen(onBack: () -> Unit, onImported: () -> Unit = onBack, viewModel: ImportViewModel = viewModel(), exams: Boolean = false) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val state by viewModel.uiState.collectAsState()
@@ -100,6 +100,7 @@ fun WebViewScreen(onBack: () -> Unit, onImported: () -> Unit = onBack, viewModel
             dismissButton = { TextButton(onClick = viewModel::cancelOverwrite) { Text("取消") } },
         )
     }
+    state.examPreview?.let { ExamPreviewDialog(it, viewModel::confirmExams, viewModel::cancelExams) }
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             Row(Modifier.fillMaxWidth()) {
@@ -117,17 +118,18 @@ fun WebViewScreen(onBack: () -> Unit, onImported: () -> Unit = onBack, viewModel
                             val html = withTimeoutOrNull(12_000) {
                                 var ready: String? = null
                                 while (ready == null && webView === current) {
-                                    val candidate = evaluateDom(current)
-                                    if (candidate != null && viewModel.isTimetableReady(candidate)) ready = candidate
+                                    val candidate = evaluateDom(current, exams)
+                                    if (candidate != null && (if (exams) viewModel.isExamReady(candidate) else viewModel.isTimetableReady(candidate))) ready = candidate
                                     else delay(1200)
                                 }
                                 ready
                             }
-                            if (html == null) snackbar.showSnackbar("课表尚未加载或无法读取课表 iframe，请进入我的课表后重试")
+                            if (html == null) snackbar.showSnackbar(if (exams) "请进入修学信息 → 考试日程查询，等待考试记录出现后重试" else "课表尚未加载或无法读取课表 iframe，请进入我的课表后重试")
+                            else if (exams) viewModel.previewExams(html)
                             else viewModel.saveCourseHtml(html)
                         } finally { saving = false }
                     }
-                }) { if (saving || state.isImporting) CircularProgressIndicator(Modifier.padding(4.dp)) else Text("导入课表") }
+                }) { if (saving || state.isImporting) CircularProgressIndicator(Modifier.padding(4.dp)) else Text(if (exams) "导入考试日程" else "导入课表") }
             }
             if (WEB_DIAGNOSTICS_ENABLED) {
               Row {
@@ -255,8 +257,8 @@ fun WebViewScreen(onBack: () -> Unit, onImported: () -> Unit = onBack, viewModel
     }
 }
 
-private suspend fun evaluateDom(webView: WebView): String? = suspendCancellableCoroutine { cont ->
-    webView.evaluateJavascript(NauDomCapture.script) { result ->
+private suspend fun evaluateDom(webView: WebView, exams: Boolean): String? = suspendCancellableCoroutine { cont ->
+    webView.evaluateJavascript(if (exams) NauDomCapture.examScript else NauDomCapture.script) { result ->
         if (cont.isActive) cont.resume(runCatching {
             JSONObject("""{"h":$result}""").opt("h").takeIf { it is String } as? String
         }.getOrNull())

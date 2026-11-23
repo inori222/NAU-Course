@@ -5,6 +5,8 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.xmu.course.data.CourseRepository
+import com.xmu.course.data.ExamRepository
+import com.xmu.course.domain.Exam
 import com.xmu.course.data.DisplaySettings
 import com.xmu.course.data.TimetablePrefs
 import com.xmu.course.data.TimetableRepository
@@ -29,6 +31,7 @@ import java.time.temporal.ChronoUnit
 data class TimetableUiState(
     val timetable: Timetable? = null,
     val courses: List<Course> = emptyList(),
+    val exams: List<Exam> = emptyList(),
     /** 本地“翘课”课程 ID；只影响 CourseCard 视觉。 */
     val skippedCourseIds: Set<Long> = emptySet(),
     /** 每课表独立的显示配置（Room 实时观察）。 */
@@ -66,6 +69,7 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
     // Phase 4 曾加过带默认值的 db 参数导致闪退（NoSuchMethodException），勿改回。
     private val db = AppDatabase.getInstance(application)
     private val courseRepo = CourseRepository(db)
+    private val examRepo = ExamRepository(db)
     private val timetableRepo = TimetableRepository(db)
     private var skippedMarks: List<SkippedCourseEntity> = emptyList()
 
@@ -99,7 +103,8 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
                                     courseRepo.observeCourses(timetable.semesterId),
                                     timetableRepo.observeConfig(timetable.id),
                                     courseRepo.observeSkippedCourses(),
-                                ) { courses, config, skipped ->
+                                    examRepo.observe(timetable.semesterId),
+                                ) { courses, config, skipped, exams ->
                                     skippedMarks = skipped
                                     val actualWeek = computeCurrentWeek(timetable)
                                         .coerceIn(1, timetable.totalWeeks)
@@ -116,6 +121,7 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
                                     TimetableUiState(
                                         timetable = timetable,
                                         courses = courses,
+                                        exams = exams,
                                         skippedCourseIds = skippedForWeek(skipped, viewWeek),
                                         config = config,
                                         actualWeek = actualWeek,
@@ -153,6 +159,10 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
 
     /** 回到本周：viewWeek = actualWeek。 */
     fun backToCurrentWeek() = selectWeek(_uiState.value.actualWeek)
+
+    fun removeExam(semesterId: Long, exam: Exam) {
+        viewModelScope.launch { examRepo.remove(semesterId, exam) }
+    }
 
     /** 手动添加课程（写入当前课表对应的学期）。 */
     fun addCourse(course: Course) {

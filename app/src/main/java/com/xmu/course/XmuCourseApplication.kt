@@ -12,6 +12,7 @@ class XmuCourseApplication : Application() {
         // 持有测试数据库并在后台继续查询，否则会在下一用例触发失效连接。
         if (!Build.FINGERPRINT.contains("robolectric", ignoreCase = true)) {
             WidgetUpdater.start(this)
+            com.xmu.course.reminder.ExamReminders.start(this)
         }
     }
 }

@@ -5,6 +5,9 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -53,10 +56,13 @@ fun ImportScreen(
     onOpenWebView: () -> Unit,
     onImported: () -> Unit = {},
     viewModel: ImportViewModel = viewModel(),
+    onOpenExamWebView: () -> Unit = onOpenWebView,
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
+    var examFile by rememberSaveable { mutableStateOf(false) }
+    uiState.examPreview?.let { ExamPreviewDialog(it, viewModel::confirmExams, viewModel::cancelExams) }
 
     // 同学期覆盖导入确认对话框
     uiState.conflict?.let { conflict ->
@@ -82,7 +88,7 @@ fun ImportScreen(
         if (uri != null) {
             scope.launch {
                 val html = withContext(Dispatchers.IO) { readHtmlFromUri(context, uri) }
-                viewModel.saveImportedHtml(html.orEmpty())
+                if (examFile) viewModel.previewExams(html.orEmpty()) else viewModel.saveImportedHtml(html.orEmpty())
             }
         }
     }
@@ -103,6 +109,7 @@ fun ImportScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -115,16 +122,18 @@ fun ImportScreen(
                 Spacer(Modifier.padding(4.dp))
                 Text("打开南审教务")
             }
+            Button(onClick = onOpenExamWebView) { Text("从考试日程查询导入") }
 
             ListItem(
                 headlineContent = { Text("方式二：选择本地 HTML 文件") },
                 supportingContent = { Text("适合离线导入与开发测试") },
             )
-            Button(onClick = { filePicker.launch(arrayOf("text/html")) }, enabled = !uiState.isImporting, modifier = Modifier.height(48.dp)) {
+            Button(onClick = { examFile = false; filePicker.launch(arrayOf("text/html")) }, enabled = !uiState.isImporting, modifier = Modifier.height(48.dp)) {
                 Icon(Icons.Filled.Description, contentDescription = null)
                 Spacer(Modifier.padding(4.dp))
                 Text("选择 HTML 文件")
             }
+            Button(onClick = { examFile = true; filePicker.launch(arrayOf("text/html")) }, enabled = !uiState.isImporting) { Text("选择考试 HTML 文件") }
 
             Text(
                 text = "隐私说明：本应用不保存账号密码，不上传任何数据，所有解析均在本地完成。",

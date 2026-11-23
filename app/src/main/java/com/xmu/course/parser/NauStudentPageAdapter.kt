@@ -6,7 +6,6 @@ import org.jsoup.nodes.TextNode
 
 /** 基于脱敏的学生课表 iframe 样本；每个上课时间 span 对应一条排课。 */
 class NauStudentPageAdapter : NauPageAdapter {
-    private val semesterPattern = Regex("(\\d{4})\\s*-\\s*(\\d{4})\\s*学年\\s*第([一二三123])学期")
     private val timePattern = Regex("^(.+?)\\s+周\\s*([1-7])\\s+第\\s*(\\d+)\\s*[-至]\\s*(\\d+)\\s*节$")
 
     override fun pageState(document: Document): TimetablePageState {
@@ -27,10 +26,7 @@ class NauStudentPageAdapter : NauPageAdapter {
 
     override fun semester(document: Document): ParsedSemester {
         val title = document.selectFirst(".tdTitle")?.ownText().orEmpty()
-        val match = semesterPattern.find(title) ?: return ParsedSemester("", "")
-        val (start, end, termText) = match.destructured
-        val term = when (termText) { "一", "1" -> 1; "二", "2" -> 2; else -> 3 }
-        return ParsedSemester("$start-$end-$term", match.value.replace(Regex("\\s+"), ""))
+        return parseNauSemester(title)
     }
 
     override fun courseNodes(document: Document): List<Element> =

@@ -11,13 +11,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * 应用数据库，版本更新必须提供迁移，不启用破坏性回退。
  */
 @Database(
-    entities = [SemesterEntity::class, CourseEntity::class, TimetableEntity::class, TimetableConfigEntity::class, SkippedCourseEntity::class],
-    version = 10,
+    entities = [SemesterEntity::class, CourseEntity::class, TimetableEntity::class, TimetableConfigEntity::class, SkippedCourseEntity::class, ExamEntity::class],
+    version = 11,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun semesterDao(): SemesterDao
+    abstract fun examDao(): ExamDao
     abstract fun courseDao(): CourseDao
     abstract fun timetableDao(): TimetableDao
     abstract fun skippedCourseDao(): SkippedCourseDao
@@ -32,7 +33,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "xmu_course.db",
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                     .build().also { instance = it }
             }
 
@@ -161,6 +162,17 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE skipped_courses ADD COLUMN week INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("DROP INDEX IF EXISTS index_skipped_courses_courseId")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_skipped_courses_courseId_week ON skipped_courses(courseId, week)")
+            }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""CREATE TABLE exams (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, semesterId INTEGER NOT NULL,
+                    courseCode TEXT NOT NULL, name TEXT NOT NULL, teachingClass TEXT NOT NULL,
+                    startAt INTEGER NOT NULL, endAt INTEGER NOT NULL, location TEXT NOT NULL,
+                    FOREIGN KEY(semesterId) REFERENCES semesters(id) ON DELETE CASCADE)""")
+                db.execSQL("CREATE INDEX index_exams_semesterId ON exams(semesterId)")
             }
         }
 

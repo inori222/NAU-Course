@@ -118,6 +118,7 @@ fun SettingsScreen(
             }
 
             // ---- 课表显示 ----
+            ExamReminderSettings()
             Card(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 Column(Modifier.padding(16.dp)) {
                     Text("课表显示", style = MaterialTheme.typography.titleMedium)
