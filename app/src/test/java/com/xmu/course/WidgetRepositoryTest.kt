@@ -28,6 +28,26 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class WidgetRepositoryTest {
 
+    @Test fun examAgendaFiltersByDateAndSemesterAndBreaksTies() = runTest {
+        val zone = com.xmu.course.domain.examZone
+        val midnight = today.atStartOfDay(zone).toInstant().toEpochMilli()
+        val exam = com.xmu.course.domain.Exam("", "上午考试", "", midnight + 510 * 60_000L,
+            midnight + 600 * 60_000L, "A101")
+        fun row(semester: Long, at: Long) = com.xmu.course.data.local.ExamEntity(semesterId = semester,
+            exam = exam.copy(startAt = exam.startAt + at, endAt = exam.endAt + at))
+        val other = timetableRepo.createTimetable("另一学期")
+        com.xmu.course.data.TimetablePrefs.setCurrent(ApplicationProvider.getApplicationContext(), timetableId)
+        db.examDao().insert(listOf(row(semesterId, 0), row(semesterId, 86_400_000), row(other.semesterId, 0)))
+        insert("同时间课程", today.dayOfWeek.value, 1, duration = 1)
+        val data = WidgetRepository.loadToday(ApplicationProvider.getApplicationContext(), today, LocalTime.of(8, 0), db)
+        assertEquals(listOf("上午考试", "同时间课程"), data.courses.map { it.name })
+        val next = WidgetRepository.findNextCourse(data.courses, data.nowMinuteOfDay)!!
+        assertTrue(next.isExam)
+        assertEquals("08:30–10:00", next.displayTime)
+        assertEquals(listOf(next), WidgetRepository.remainingCourses(data.courses, 560))
+        assertTrue(WidgetRepository.remainingCourses(data.courses, 600).isEmpty())
+    }
+
     @Test
     fun remainingCoursesTest() = runTest {
         val monday = today.dayOfWeek.value

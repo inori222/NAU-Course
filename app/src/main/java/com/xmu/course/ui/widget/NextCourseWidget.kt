@@ -6,6 +6,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -41,9 +43,11 @@ import androidx.glance.unit.ColorProvider
 class NextCourseWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val data = WidgetRepository.loadToday(context)
-        val next = WidgetRepository.findNextCourse(data.courses, data.nowMinuteOfDay)
+        val initial = WidgetRepository.loadToday(context)
+        val agenda = WidgetUpdater.observeAgenda(context)
         provideContent {
+            val data by agenda.collectAsState(initial)
+            val next = WidgetRepository.findNextCourse(data.courses, data.nowMinuteOfDay)
             NextCourseContent(next, data.nowMinuteOfDay)
         }
     }
@@ -78,13 +82,17 @@ fun NextCourseContent(
     nowMinuteOfDay: Int,
     style: WidgetBackgroundStyle = WidgetTheme.defaultStyle,
 ) {
-    val title = if (next == null) "今日无课程" else "下一节课"
-    val time = next?.startTime ?: "--:--"
+    val title = when {
+        next == null -> "今日无后续安排"
+        next.isExam -> "下一场考试"
+        else -> "下一节课"
+    }
+    val time = next?.displayTime ?: "--:--"
     val name = next?.name ?: "休息一下"
     val location = next?.location?.takeIf { it.isNotBlank() }?.let { "@$it" } ?: ""
     val countdown = WidgetRepository.countdownText(nowMinuteOfDay, next)
     val courseId = next?.id ?: -1L
-    val action = if (next != null) {
+    val action = if (next != null && !next.isExam) {
         actionRunCallback(
             OpenCourseAction::class.java,
             actionParametersOf(OpenCourseAction.KEY_COURSE_ID to courseId),
@@ -102,6 +110,7 @@ fun NextCourseContent(
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
+                .then(if (next?.isExam == true) GlanceModifier.background(ColorProvider(WidgetTheme.examBackground)) else GlanceModifier)
                 .padding(12.dp),
         ) {
             Text(
@@ -141,7 +150,7 @@ fun NextCourseContent(
             }
             Spacer(modifier = GlanceModifier.height(4.dp))
             Text(
-                text = countdown,
+                text = if (next == null) "" else countdown,
                 style = widgetTextStyle(
                     color = if (next?.isSkipped == true) WidgetTheme.disabledText else WidgetTheme.textSecondary,
                     size = 11.sp,

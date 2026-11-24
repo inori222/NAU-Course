@@ -157,6 +157,16 @@ fun TimetableSettingsScreen(
                             config.textSize.toFloat(), 8f, 18f,
                         ) { viewModel.update { c -> c.copy(textSize = it.toInt()) } }
 
+                        Text("课表字体颜色", Modifier.padding(top = 8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("自动" to null, "白色" to -1, "黑色" to 0xFF000000.toInt(),
+                                "深蓝" to 0xFF102B52.toInt()).forEach { (label, color) ->
+                                FilterChip(selected = color == config.fontColor,
+                                    onClick = { viewModel.update { it.copy(fontColor = color) } },
+                                    label = { Text(label) })
+                            }
+                        }
+
                         Text("水平对齐", Modifier.padding(top = 8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             horizontalOptions.forEach { (value, label) ->

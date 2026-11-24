@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -63,6 +65,13 @@ import androidx.compose.ui.layout.onSizeChanged
 import android.util.Log
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.xmu.course.domain.Course
+import com.xmu.course.domain.Exam
+import com.xmu.course.domain.examZone
+import java.time.LocalDate
+import java.time.DayOfWeek
+import java.time.temporal.TemporalAdjusters
+import androidx.compose.runtime.key
+import androidx.compose.ui.graphics.takeOrElse
 import com.xmu.course.domain.TimetableConfig
 import com.xmu.course.data.DisplaySettings
 import com.xmu.course.ui.background.TimetableBackground
@@ -85,6 +94,10 @@ fun TimetableScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var showWeekPicker by remember { mutableStateOf(false) }
     var detailCourse by remember { mutableStateOf<Course?>(null) }
+
+    val fontColor = state.config.fontColor?.let { Color(it) } ?: Color.Unspecified
+    var showExams by remember(state.timetable?.id) { mutableStateOf(false) }
+    var selectedExam by remember(state.timetable?.id) { mutableStateOf<Exam?>(null) }
 
     // 查看周变化（首次进入默认定位实际周；周选择器选择/回到本周也会触发）。
     LaunchedEffect(state.viewWeek) {
@@ -116,6 +129,7 @@ fun TimetableScreen(
             topBar = {
                 if (state.config.headerCompactMode) {
                     TimetableCompactHeader(
+                        fontColor = fontColor,
                         title = if (state.hasData) {
                             val suffix = if (pagerState.currentPage + 1 == state.actualWeek) " · 本周" else ""
                             "第 ${pagerState.currentPage + 1} 周$suffix ▼"
@@ -134,6 +148,7 @@ fun TimetableScreen(
                     TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
+                        titleContentColor = fontColor.takeOrElse { MaterialTheme.colorScheme.onSurface },
                     ),
                     title = {
                         Column {
@@ -150,7 +165,7 @@ fun TimetableScreen(
                             Text(
                                 text = if (state.hasData) state.timetable?.name ?: "NAU Course" else "尚无数据，请先导入",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = fontColor.takeOrElse { MaterialTheme.colorScheme.onSurfaceVariant },
                             )
                         }
                     },
@@ -188,22 +203,16 @@ fun TimetableScreen(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
             ) { page ->
-                Column {
-                    val timetable = state.timetable
-                    if (state.exams.isNotEmpty() && timetable != null) {
-                        WeekExams(state.exams, timetable.startDate, page + 1) { exam ->
-                            viewModel.removeExam(timetable.semesterId, exam)
-                        }
-                    }
-                    TimetableWeekGrid(
-                        week = page + 1,
-                        courses = state.courses,
-                        skippedCourseIds = state.skippedCourseIds,
-                        showGrid = state.showGrid,
-                        config = state.config,
-                        onCourseClick = { detailCourse = it },
-                    )
-                }
+                val startDate = state.timetable?.startDate
+                val weekOne = startDate ?: LocalDate.now(examZone)
+                    .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).toString()
+                val exams = remember(state.exams, weekOne, page) { examsInWeek(state.exams, weekOne, page + 1) }
+                TimetableWeekGrid(
+                    week = page + 1, courses = state.courses, exams = exams,
+                    skippedCourseIds = state.skippedCourseIds, showGrid = state.showGrid,
+                    config = state.config, onCourseClick = { detailCourse = it },
+                    onExamClick = { selectedExam = it },
+                )
             }
         }
     }
@@ -222,6 +231,10 @@ fun TimetableScreen(
                 viewModel.backToCurrentWeek()
                 showWeekPicker = false
             },
+            onExams = if (state.exams.isEmpty()) null else ({
+                showWeekPicker = false
+                showExams = true
+            }),
             onDismiss = { showWeekPicker = false },
         )
     }
@@ -235,6 +248,17 @@ fun TimetableScreen(
                 showAddDialog = false
             },
         )
+    }
+
+    if (showExams) SemesterExams(state.exams, state.timetable?.startDate, onSelect = {
+        selectedExam = it
+        showExams = false
+    }, onClose = { showExams = false })
+    selectedExam?.let { exam ->
+        ExamDetails(exam, onRemove = {
+            state.timetable?.let { viewModel.removeExam(it.semesterId, exam) }
+            selectedExam = null
+        }, onClose = { selectedExam = null })
     }
 
     detailCourse?.let { course ->
@@ -262,20 +286,21 @@ fun TimetableScreen(
 private fun TimetableCompactHeader(
     title: String,
     subtitle: String,
+    fontColor: Color,
     onTitleClick: () -> Unit,
     onAddClick: () -> Unit,
 ) {
-    val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = statusBarPadding)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
             .padding(start = 12.dp, end = 2.dp, top = 0.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
             Text(
                 text = title,
+                color = fontColor,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
@@ -284,7 +309,7 @@ private fun TimetableCompactHeader(
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = fontColor.takeOrElse { MaterialTheme.colorScheme.onSurfaceVariant },
                 maxLines = 1,
             )
         }
@@ -301,9 +326,11 @@ private fun TimetableCompactHeader(
  * 单周网格：左侧节次（含时间）+ 周日~周六 7 列，课程卡片按布局引擎放置。
  */
 @Composable
-private fun TimetableWeekGrid(
+internal fun TimetableWeekGrid(
     week: Int,
     courses: List<Course>,
+    exams: List<Exam>,
+    onExamClick: (Exam) -> Unit,
     skippedCourseIds: Set<Long>,
     showGrid: Boolean,
     config: TimetableConfig,
@@ -313,23 +340,25 @@ private fun TimetableWeekGrid(
     val configuredCount by DisplaySettings.sectionCount.collectAsState()
     val sectionCount = effectiveSectionCount(configuredCount, courses)
     // TimeColumn 和 Grid 使用同一纵向布局配置，禁止各自独立推算高度。
-    val layoutConfig = TimetableLayoutConfig(cellHeight.value, sectionCount)
+    val grid = remember(sectionCount, exams) { MinuteGrid(sectionCount, exams) }
+    val examsByDay = remember(exams) { exams.groupBy { it.date().dayOfWeek.value } }
+    val fontColor = config.fontColor?.let { Color(it) } ?: Color.Unspecified
     // showNonCurrentWeek=false 时隐藏非本周课程
-    val layout = TimetableLayoutEngine.layoutForWeek(
-        courses, week, onlyCurrentWeek = !config.showNonCurrentWeek,
-    )
+    val layout = remember(courses, week, config.showNonCurrentWeek) {
+        TimetableLayoutEngine.layoutForWeek(courses, week, onlyCurrentWeek = !config.showNonCurrentWeek)
+    }
     val scrollState = rememberScrollState()
     val axisTypography = timeAxisTypography(cellHeight.value)
     // 列顺序：周一到周日。
     val dayColumns: List<Int> = buildList {
         addAll(listOf(1, 2, 3, 4, 5))
-        if (config.showSaturday) add(6)
-        if (config.showSunday) add(7)
+        if (config.showSaturday || 6 in examsByDay) add(6)
+        if (config.showSunday || 7 in examsByDay) add(7)
     }
     val dayNames = mapOf(7 to "周日", 1 to "周一", 2 to "周二", 3 to "周三", 4 to "周四", 5 to "周五", 6 to "周六")
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+        Row(Modifier.fillMaxWidth()) {
             Text("", modifier = Modifier.width(60.dp), style = MaterialTheme.typography.labelSmall)
             dayColumns.forEach { day ->
                 Text(
@@ -338,7 +367,7 @@ private fun TimetableWeekGrid(
                     textAlign = TextAlign.Center,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = fontColor.takeOrElse { MaterialTheme.colorScheme.onSurface },
                 )
             }
         }
@@ -354,6 +383,7 @@ private fun TimetableWeekGrid(
                 // 分隔线画在固定高度的 Box 内部，不能使用额外 HorizontalDivider。
                 // 否则每节累计 +1dp，时间轴会逐渐偏离右侧网格线。
                 val axisLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                if (grid.leadingRows > 0) OutsidePeriods("课前", cellHeight * grid.leadingRows, fontColor)
                 repeat(sectionCount) { index ->
                     Box(
                         Modifier
@@ -380,7 +410,7 @@ private fun TimetableWeekGrid(
                                 fontSize = axisTypography.numberSizeSp.sp,
                                 lineHeight = axisTypography.numberLineHeightSp.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface,
+                                color = fontColor.takeOrElse { MaterialTheme.colorScheme.onSurface },
                             )
                             if (config.showFullTimeAxis) {
                                 val parts = TimeTableConfig.timeOf(index + 1).split("-")
@@ -388,27 +418,31 @@ private fun TimetableWeekGrid(
                                     text = parts.getOrNull(0) ?: "",
                                     fontSize = axisTypography.timeSizeSp.sp,
                                     lineHeight = axisTypography.timeLineHeightSp.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = fontColor.takeOrElse { MaterialTheme.colorScheme.onSurfaceVariant },
                                 )
                                 Text(
                                     text = parts.getOrNull(1) ?: "",
                                     fontSize = axisTypography.timeSizeSp.sp,
                                     lineHeight = axisTypography.timeLineHeightSp.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = fontColor.takeOrElse { MaterialTheme.colorScheme.onSurfaceVariant },
                                 )
                             }
                         }
                     }
+                    if (index + 1 == grid.knownCount && grid.trailingRows > 0) {
+                        OutsidePeriods("课后", cellHeight * grid.trailingRows, fontColor)
+                    }
                 }
             }
             // 天列。
-            dayColumns.forEachIndexed { colIndex, day ->
+            dayColumns.forEach { day ->
                 DayColumn(
-                    dayOfWeek = day,
+                    exams = examsByDay[day].orEmpty(),
+                    onExamClick = onExamClick,
                     items = layout[day].orEmpty(),
                     skippedCourseIds = skippedCourseIds,
                     showGrid = showGrid,
-                    layoutConfig = layoutConfig,
+                    grid = grid,
                     config = config,
                     onCourseClick = onCourseClick,
                     modifier = Modifier.weight(1f),
@@ -423,32 +457,31 @@ private fun TimetableWeekGrid(
  */
 @Composable
 private fun DayColumn(
-    dayOfWeek: Int,
+    exams: List<Exam>,
+    onExamClick: (Exam) -> Unit,
     items: List<TimetableLayoutItem>,
     skippedCourseIds: Set<Long>,
     showGrid: Boolean,
-    layoutConfig: TimetableLayoutConfig,
+    grid: MinuteGrid,
     config: TimetableConfig,
     onCourseClick: (Course) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cellHeight = config.courseHeight.dp
     BoxWithConstraints(
-        modifier = modifier.height(cellHeight * layoutConfig.sectionCount),
+        modifier = modifier.height(cellHeight * grid.height),
     ) {
         // 渲染顺序：先画 ghost（非本周淡化，独立布局），再画本周课程覆盖其上。
-        val activeItems = items.filter { it.isCurrentWeek }
-        val ghostItems = items.filter { !it.isCurrentWeek }
+        val placed = remember(grid, items, exams) { grid.layout(items, exams) }
+        val cardText = config.fontColor?.let { Color(it) } ?: Color.White
 
         // 网格只作为 Canvas 视觉层：不新增 padding/size，也不改变课程 Box 的约束。
         if (showGrid) {
             val lineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
             Canvas(Modifier.matchParentSize()) {
                 val strokeWidth = 1.dp.toPx()
-                val rowHeight = cellHeight.toPx()
-                // 横向节次线（1..sectionCount），与课程 y=(start-1)*cellHeight 对齐。
-                for (index in 1..layoutConfig.sectionCount) {
-                    val y = layoutConfig.gridLineYDp(index).dp.toPx()
+                for (index in 0 until grid.sectionCount) {
+                    val y = (grid.sectionTop(index) + 1f) * cellHeight.toPx()
                     drawLine(
                         color = lineColor,
                         start = Offset(0f, y),
@@ -466,35 +499,35 @@ private fun DayColumn(
             }
         }
 
-        // 宽度由所在冲突组的 laneCount 决定（组内均分）；高度只由节次决定。
-        (ghostItems + activeItems).forEach { item ->
-            val course = item.course
-            val slotWidth = maxWidth / maxOf(item.laneCount, 1)
-            val layoutHeight = cellHeight * course.duration
-            val renderHeight = layoutHeight
-            val offsetX = slotWidth * item.laneIndex
-            val offsetY = cellHeight * (course.startSection - 1)
-            Box(
-                modifier = Modifier
-                    .offset(x = offsetX, y = offsetY)
-                    .width(slotWidth)
-                    .height(renderHeight)
-                    .padding(1.dp),
-            ) {
-                CourseCard(
-                    course = course,
-                    isCurrentWeek = item.isCurrentWeek,
-                    isSkipped = course.id in skippedCourseIds,
-                    showTeacher = config.showTeacher,
-                    showLocation = config.showLocation,
-                    showNote = config.showNote,
-                    textSize = config.textSize,
-                    cornerRadius = config.cornerRadius,
-                    cardAlpha = config.courseAlpha,
-                    textHorizontalAlignment = config.textHorizontalAlignment,
-                    textVerticalAlignment = config.textVerticalAlignment,
-                    onClick = { onCourseClick(course) },
-                )
+        placed.forEach { lane ->
+            val event = lane.item
+            val slotWidth = maxWidth / lane.count
+            val (top, bottom) = grid.bounds(event)
+            Box(Modifier.offset(x = slotWidth * lane.lane, y = cellHeight * top)
+                .width(slotWidth).height(cellHeight * (bottom - top)).clip(androidx.compose.ui.graphics.RectangleShape)
+                .padding(1.dp)) {
+                when (event) {
+                    is GridEvent.ExamSlot -> ExamCard(event.exam, config, cardText) { onExamClick(event.exam) }
+                    is GridEvent.Lesson -> key(event.item.course.id) {
+                        val item = event.item
+                        val course = item.course
+                        CourseCard(
+                            course = course,
+                            fontColor = cardText,
+                            isCurrentWeek = item.isCurrentWeek,
+                            isSkipped = course.id in skippedCourseIds,
+                            showTeacher = config.showTeacher,
+                            showLocation = config.showLocation,
+                            showNote = config.showNote,
+                            textSize = config.textSize,
+                            cornerRadius = config.cornerRadius,
+                            cardAlpha = config.courseAlpha,
+                            textHorizontalAlignment = config.textHorizontalAlignment,
+                            textVerticalAlignment = config.textVerticalAlignment,
+                            onClick = { onCourseClick(course) },
+                        )
+                    }
+                }
             }
         }
     }
@@ -512,6 +545,7 @@ private fun WeekPickerSheet(
     actualWeek: Int,
     onSelect: (Int) -> Unit,
     onBackToCurrent: () -> Unit,
+    onExams: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -523,6 +557,7 @@ private fun WeekPickerSheet(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("选择周", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                onExams?.let { TextButton(onClick = it) { Text("学期考试") } }
                 TextButton(onClick = {
                     onBackToCurrent()
                     onDismiss()

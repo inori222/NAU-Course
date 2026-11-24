@@ -10,24 +10,30 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.ScaleFactor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.xmu.course.R
 import com.xmu.course.domain.BackgroundType
 import com.xmu.course.domain.TimetableConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 /** 统一内置/默认背景流水线参数：确保校园照片不会影响课表可读性。 */
 object BackgroundPipelineDefaults {
@@ -98,6 +104,27 @@ private suspend fun loadImageBitmap(context: Context, uri: String?): ImageBitmap
     }
 }
 
+/** 缩放和平移图片的取景范围，遮罩和模糊始终覆盖整个可见背景。 */
+private class BackgroundCrop(
+    val zoom: Float,
+    val panX: Float,
+    val panY: Float,
+) : ContentScale, Alignment {
+    override fun computeScaleFactor(srcSize: Size, dstSize: Size): ScaleFactor {
+        val cover = ContentScale.Crop.computeScaleFactor(srcSize, dstSize)
+        val scale = zoom.coerceIn(1f, 4f)
+        return ScaleFactor(cover.scaleX * scale, cover.scaleY * scale)
+    }
+
+    override fun align(size: IntSize, space: IntSize, layoutDirection: LayoutDirection): IntOffset {
+        fun position(image: Int, viewport: Int, pan: Float): Int {
+            val overflow = (image - viewport).coerceAtLeast(0)
+            return (pan - overflow / 2f).roundToInt().coerceIn(-overflow, 0)
+        }
+        return IntOffset(position(size.width, space.width, panX), position(size.height, space.height, panY))
+    }
+}
+
 /**
  * 背景渲染层。背景只负责视觉显示，绝不参与 LayoutEngine / 节次高度 / 冲突分栏计算。
  */
@@ -105,10 +132,9 @@ private suspend fun loadImageBitmap(context: Context, uri: String?): ImageBitmap
 fun BackgroundContent(
     config: TimetableConfig,
     modifier: Modifier = Modifier,
-    enableCropTransform: Boolean = false,
 ) {
     val context = LocalContext.current
-    val customImage by produceState<ImageBitmap?>(initialValue = null, config.backgroundValue) {
+    val customImage by produceState<ImageBitmap?>(null, config.backgroundType, config.backgroundValue) {
         value = if (config.backgroundType == BackgroundType.CUSTOM) {
             loadImageBitmap(context, config.backgroundValue)
         } else {
@@ -116,7 +142,7 @@ fun BackgroundContent(
         }
     }
 
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(modifier.fillMaxSize().clipToBounds(), contentAlignment = Alignment.Center) {
         when (config.backgroundType) {
             BackgroundType.BUILT_IN -> {
                 val resId = backgroundResource(config.backgroundValue)
@@ -127,7 +153,7 @@ fun BackgroundContent(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .fillMaxSize()
-                            .blur(config.blurRadius.dp, BlurredEdgeTreatment.Unbounded),
+                            .blur(config.blurRadius.dp),
                     )
                 } else {
                     Box(Modifier.fillMaxSize().background(Color(0xFF1A5799)))
@@ -143,19 +169,17 @@ fun BackgroundContent(
             BackgroundType.CUSTOM -> {
                 val bitmap = customImage
                 if (bitmap != null) {
+                    val crop = remember(config.cropScale, config.cropOffsetX, config.cropOffsetY) {
+                        BackgroundCrop(config.cropScale, config.cropOffsetX, config.cropOffsetY)
+                    }
                     Image(
                         bitmap = bitmap,
                         contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                        contentScale = crop,
+                        alignment = crop,
                         modifier = Modifier
                             .fillMaxSize()
-                            .graphicsLayer {
-                                scaleX = config.cropScale
-                                scaleY = config.cropScale
-                                translationX = config.cropOffsetX
-                                translationY = config.cropOffsetY
-                            }
-                            .blur(config.blurRadius.dp, BlurredEdgeTreatment.Unbounded),
+                            .blur(config.blurRadius.dp),
                     )
                 } else {
                     Box(Modifier.fillMaxSize().background(Color(0xFF1A5799)))
@@ -185,6 +209,5 @@ fun TimetableBackground(config: TimetableConfig, modifier: Modifier = Modifier) 
     BackgroundContent(
         config = config,
         modifier = modifier,
-        enableCropTransform = true,
     )
 }

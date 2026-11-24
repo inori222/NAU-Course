@@ -5,6 +5,7 @@ import com.xmu.course.data.TimetablePrefs
 import com.xmu.course.data.local.AppDatabase
 import com.xmu.course.data.local.toDomain
 import com.xmu.course.domain.Course
+import com.xmu.course.domain.examZone
 import com.xmu.course.domain.occursInWeek
 import com.xmu.course.domain.Timetable
 import com.xmu.course.ui.timetable.TimeTableConfig
@@ -17,11 +18,13 @@ data class WidgetCourse(
     val id: Long,
     val name: String,
     val location: String,
-    val startSection: Int,
+    val startSection: Int?,
     val startTime: String,
     val startMinuteOfDay: Int,
     val endMinuteOfDay: Int,
     val isSkipped: Boolean,
+    val isExam: Boolean = false,
+    val displayTime: String = startTime,
 )
 
 /** Widget 展示快照。 */
@@ -41,8 +44,8 @@ object WidgetRepository {
 
     suspend fun loadToday(
         context: Context,
-        today: LocalDate = LocalDate.now(),
-        now: LocalTime = LocalTime.now(),
+        today: LocalDate = LocalDate.now(examZone),
+        now: LocalTime = LocalTime.now(examZone),
         db: AppDatabase = AppDatabase.getInstance(context),
     ): WidgetTimetableData {
         TimetablePrefs.load(context)
@@ -57,11 +60,24 @@ object WidgetRepository {
         val skipped = db.skippedCourseDao().getSkippedCourseIdsForWeek(week).toSet()
         val day = today.dayOfWeek.value
 
+        val todaysExams = timetable?.let { tt ->
+            val start = today.atStartOfDay(examZone).toInstant().toEpochMilli()
+            val end = today.plusDays(1).atStartOfDay(examZone).toInstant().toEpochMilli()
+            db.examDao().onDate(tt.semesterId, start, end).map { row ->
+                val exam = row.exam
+                WidgetCourse(id = row.id, name = exam.name, location = exam.location,
+                    startSection = null, startTime = exam.startTime().toString(),
+                    startMinuteOfDay = exam.startTime().toSecondOfDay() / 60,
+                    endMinuteOfDay = exam.endTime().toSecondOfDay() / 60,
+                    isSkipped = false, isExam = true, displayTime = exam.timeRange())
+            }
+        }.orEmpty()
+        val agenda = (todaysExams + filterTodayCourses(courses, skipped, week, day)).sortedBy { it.startMinuteOfDay }
         return WidgetTimetableData(
             timetableName = timetable?.name ?: "NAU Course",
             week = week,
             dayOfWeek = day,
-            courses = filterTodayCourses(courses, skipped, week, day),
+            courses = agenda,
             nowMinuteOfDay = now.hour * 60 + now.minute,
         )
     }

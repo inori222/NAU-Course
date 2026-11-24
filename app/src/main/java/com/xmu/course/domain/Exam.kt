@@ -16,6 +16,10 @@ data class Exam(
     val endAt: Long,
     val location: String,
 ) {
+    fun startTime() = Instant.ofEpochMilli(startAt).atZone(examZone).toLocalTime()
+    fun endTime() = Instant.ofEpochMilli(endAt).atZone(examZone).toLocalTime()
+    fun timeRange() = "${startTime().format(examTime)}–${endTime().format(examTime)}"
+
     fun date() = Instant.ofEpochMilli(startAt).atZone(examZone).toLocalDate()
 
     fun scheduleText(): String {

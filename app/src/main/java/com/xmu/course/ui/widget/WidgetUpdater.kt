@@ -11,6 +11,9 @@ import com.xmu.course.data.local.AppDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -26,6 +29,11 @@ object WidgetUpdater {
     private const val REQUEST_CODE_MINUTE_TICK = 1001
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    // Glance may keep a composition alive across update() calls. Reload its snapshot
+    // on the same database changes and minute ticks that wake idle widgets.
+    private val revision = MutableStateFlow(0L)
+    internal fun observeAgenda(context: Context) = revision.map { WidgetRepository.loadToday(context) }
 
     /** Application 启动时调用，保持 Widget 跟随当前课表和 Room 数据。 */
     fun start(context: Context) {
@@ -51,6 +59,9 @@ object WidgetUpdater {
                 updateAll(appContext)
             }
         }
+        appScope.launch {
+            db.examDao().observeAll().collectLatest { updateAll(appContext) }
+        }
         // 课表名称 / 日期 / 当前周变化。
         appScope.launch {
             db.timetableDao().observeAllWithCount().collectLatest {
@@ -61,6 +72,7 @@ object WidgetUpdater {
 
     /** 两个 Widget 都刷新。 */
     suspend fun updateAll(context: Context) {
+        revision.update { it + 1 }
         val appContext = context.applicationContext
         val manager = GlanceAppWidgetManager(appContext)
         manager.getGlanceIds(TodayCourseWidget::class.java).forEach { glanceId ->

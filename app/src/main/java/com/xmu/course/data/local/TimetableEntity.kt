@@ -78,6 +78,7 @@ data class TimetableConfigEntity(
     val textVerticalAlignment: String = TextVerticalAlignment.CENTER.name,
     val showFullTimeAxis: Boolean = true,
     val headerCompactMode: Boolean = true,
+    val fontColor: Int? = null,
 )
 
 /** 实体 → 领域模型互转。 */
@@ -119,6 +120,7 @@ fun TimetableConfigEntity.toDomain() = TimetableConfig(
         .getOrDefault(TextVerticalAlignment.CENTER),
     showFullTimeAxis = showFullTimeAxis,
     headerCompactMode = headerCompactMode,
+    fontColor = fontColor,
 )
 
 fun TimetableConfig.toEntity() = TimetableConfigEntity(
@@ -146,4 +148,5 @@ fun TimetableConfig.toEntity() = TimetableConfigEntity(
     textVerticalAlignment = textVerticalAlignment.name,
     showFullTimeAxis = showFullTimeAxis,
     headerCompactMode = headerCompactMode,
+    fontColor = fontColor,
 )

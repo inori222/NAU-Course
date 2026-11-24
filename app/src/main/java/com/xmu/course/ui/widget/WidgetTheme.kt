@@ -29,6 +29,7 @@ object WidgetTheme {
 
     val defaultStyle = WidgetBackgroundStyle.XMU_BLUE
 
+    val examBackground = androidx.compose.ui.graphics.Color(0xFFA33429)
     val textPrimary = androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val textSecondary = androidx.compose.ui.graphics.Color(0xD8FFFFFF)
     // 翘课课程统一按约 0.45 alpha 呈现，仍保留名称、时间和地点。

@@ -47,4 +47,5 @@ data class TimetableConfig(
     val textVerticalAlignment: TextVerticalAlignment = TextVerticalAlignment.CENTER,
     val showFullTimeAxis: Boolean = true,
     val headerCompactMode: Boolean = true,
+    val fontColor: Int? = null,
 )

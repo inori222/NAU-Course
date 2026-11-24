@@ -1,6 +1,8 @@
 package com.xmu.course.ui.widget
 
 import android.content.Context
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -39,8 +41,10 @@ import androidx.glance.unit.ColorProvider
 class TodayCourseWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val data = WidgetRepository.loadToday(context)
+        val initial = WidgetRepository.loadToday(context)
+        val agenda = WidgetUpdater.observeAgenda(context)
         provideContent {
+            val data by agenda.collectAsState(initial)
             TodayCourseContent(data)
         }
     }
@@ -88,7 +92,7 @@ fun TodayCourseContent(
 
             if (remaining.isEmpty()) {
                 Text(
-                    text = "今日无剩余课程",
+                    text = "今日无剩余安排",
                     style = widgetTextStyle(
                         color = WidgetTheme.textSecondary,
                         size = 12.sp,
@@ -108,7 +112,7 @@ fun TodayCourseContent(
 
 @Composable
 private fun TodayCourseItem(course: WidgetCourse) {
-    val backgroundColor = if (course.isSkipped) {
+    val backgroundColor = if (course.isExam) WidgetTheme.examBackground else if (course.isSkipped) {
         Color(0x14FFFFFF)
     } else {
         Color(0x26FFFFFF)
@@ -122,7 +126,7 @@ private fun TodayCourseItem(course: WidgetCourse) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = course.startTime,
+            text = course.displayTime,
             style = widgetTextStyle(
                 color = WidgetTheme.secondaryTextColor(course.isSkipped),
                 size = 11.sp,
@@ -132,7 +136,7 @@ private fun TodayCourseItem(course: WidgetCourse) {
         Spacer(modifier = GlanceModifier.width(9.dp))
         Column {
             Text(
-                text = course.name,
+                text = if (course.isExam) "考试 · ${course.name}" else course.name,
                 style = widgetTextStyle(
                     color = WidgetTheme.textColor(course.isSkipped),
                     size = 12.sp,

@@ -89,6 +89,7 @@ fun CourseCard(
     cardAlpha: Float = 1f,
     textHorizontalAlignment: TextHorizontalAlignment = TextHorizontalAlignment.CENTER,
     textVerticalAlignment: TextVerticalAlignment = TextVerticalAlignment.CENTER,
+    fontColor: Color = Color.White,
     onClick: () -> Unit,
 ) {
     val container = if (isSkipped) Color(0xFF8A8A8A) else courseCardColor(course)
@@ -112,7 +113,7 @@ fun CourseCard(
         content = {
             Text(
                 text = course.name,
-                color = Color.White,
+                color = fontColor,
                 fontSize = titleTextSize.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = if (course.duration <= 1) 2 else 3,
@@ -124,7 +125,7 @@ fun CourseCard(
             if (showLocation && course.location.isNotBlank()) {
                 Text(
                     text = "@" + course.location,
-                    color = Color.White.copy(alpha = 0.88f),
+                    color = fontColor.copy(alpha = 0.88f),
                     fontSize = secondaryText.sp,
                     lineHeight = (secondaryText + 1).sp,
                     maxLines = 3,
@@ -137,7 +138,7 @@ fun CourseCard(
                 // 教师始终出现；窄卡里可以省略，但不允许整块消失。
                 Text(
                     text = course.teacher,
-                    color = Color.White.copy(alpha = 0.9f),
+                    color = fontColor.copy(alpha = 0.9f),
                     fontSize = secondaryText.sp,
                     lineHeight = (secondaryText + 1).sp,
                     maxLines = 1,
@@ -151,7 +152,7 @@ fun CourseCard(
                 if (!noteOverflowed) {
                     Text(
                         text = course.note,
-                        color = Color.White.copy(alpha = 0.8f),
+                        color = fontColor.copy(alpha = 0.8f),
                         fontSize = secondaryText.sp,
                         lineHeight = (secondaryText + 1).sp,
                         maxLines = 1,

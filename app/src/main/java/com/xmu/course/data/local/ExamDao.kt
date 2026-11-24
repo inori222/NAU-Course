@@ -30,6 +30,9 @@ interface ExamDao {
     @Query("SELECT * FROM exams WHERE id = :id AND semesterId IN (SELECT semesterId FROM timetables)")
     suspend fun get(id: Long): ExamEntity?
 
+    @Query("SELECT * FROM exams WHERE semesterId = :semesterId AND startAt >= :start AND startAt < :end ORDER BY startAt, id")
+    suspend fun onDate(semesterId: Long, start: Long, end: Long): List<ExamEntity>
+
     @Delete suspend fun delete(rows: List<ExamEntity>)
     @Insert suspend fun insert(rows: List<ExamEntity>)
 }

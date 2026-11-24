@@ -123,7 +123,7 @@ class MigrationTest {
         createV1Schema()
 
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12)
             .allowMainThreadQueries()
             .build()
 
@@ -171,6 +171,7 @@ class MigrationTest {
                 AppDatabase.MIGRATION_8_9,
                 AppDatabase.MIGRATION_9_10,
                 AppDatabase.MIGRATION_10_11,
+                AppDatabase.MIGRATION_11_12,
             )
             .allowMainThreadQueries()
             .build()
@@ -179,6 +180,9 @@ class MigrationTest {
             val config = db.timetableDao().getConfig(timetableId)
             assertNotNull(config)
             config!!
+            assertEquals(null, config.fontColor)
+            db.timetableDao().upsertConfig(config.copy(fontColor = -1))
+            assertEquals(-1, db.timetableDao().getConfig(timetableId)?.fontColor)
             assertEquals(true, config.showFullTimeAxis)
             assertEquals(true, config.headerCompactMode)
             assertEquals(true, config.showTime)

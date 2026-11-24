@@ -22,10 +22,11 @@ android {
 
     defaultConfig {
         applicationId = "com.nau.course"
+        manifestPlaceholders["appLabel"] = "@string/app_name"
         minSdk = 26
         targetSdk = 35
-        versionCode = 29
-        versionName = "1.1.0"
+        versionCode = 30
+        versionName = "1.1.1"
     }
 
     testOptions {
@@ -45,6 +46,13 @@ android {
         }
     }
     buildTypes {
+        debug {
+            if (providers.gradleProperty("nauPreview").orNull == "true") {
+                applicationIdSuffix = ".preview"
+                versionNameSuffix = "-preview"
+                manifestPlaceholders["appLabel"] = "南审课表预览"
+            }
+        }
         release {
             isMinifyEnabled = false
             val releaseSigning = signingConfigs.getByName("release")

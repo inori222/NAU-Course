@@ -88,43 +88,40 @@ object TimetableLayoutEngine {
      * 2. 用"interval overlap 链"切分冲突组（A 与 B 重叠、B 与 C 重叠 → A/B/C 同组）；
      * 3. 组内贪婪分配 lane；laneCount 只在组内统计，不影响其他时间段的课程宽度。
      */
-    private fun assignLanesItems(items: List<TimetableLayoutItem>): List<TimetableLayoutItem> {
-        val sorted = items.sortedWith(
-            compareBy({ it.course.startSection }, { -(it.course.startSection + it.course.duration) }),
-        )
-        val placed = mutableListOf<TimetableLayoutItem>()
-        var group = mutableListOf<TimetableLayoutItem>()
-        var groupEnd = Int.MIN_VALUE
+    private fun assignLanesItems(items: List<TimetableLayoutItem>): List<TimetableLayoutItem> =
+        placeIntervals(items, { it.course.startSection }, { it.course.startSection + it.course.duration })
+            .map { it.item.copy(laneIndex = it.lane, laneCount = it.count) }
+}
 
-        fun flushGroup() {
-            if (group.isEmpty()) return
-            val laneEnds = mutableListOf<Int>()
-            val groupPlaced = mutableListOf<TimetableLayoutItem>()
-            for (item in group) {
-                val end = item.course.startSection + item.course.duration - 1
-                var lane = laneEnds.indexOfFirst { it < item.course.startSection }
-                if (lane == -1) {
-                    laneEnds.add(end)
-                    lane = laneEnds.lastIndex
-                } else {
-                    laneEnds[lane] = end
-                }
-                groupPlaced.add(item.copy(laneIndex = lane))
-            }
-            val laneCount = maxOf(laneEnds.size, 1)
-            placed.addAll(groupPlaced.map { it.copy(laneCount = laneCount) })
-            group = mutableListOf()
-            groupEnd = Int.MIN_VALUE
-        }
+internal data class Lane<T>(val item: T, val lane: Int, val count: Int)
 
-        for (item in sorted) {
-            if (group.isNotEmpty() && item.course.startSection > groupEnd) {
-                flushGroup() // 与当前组无任何时间重叠 → 开新组
-            }
-            group.add(item)
-            groupEnd = maxOf(groupEnd, item.course.startSection + item.course.duration - 1)
-        }
-        flushGroup()
-        return placed
+/** Allocate equal widths within each connected group of half-open intervals. */
+internal fun <T> placeIntervals(items: List<T>, start: (T) -> Int, end: (T) -> Int): List<Lane<T>> {
+    val result = mutableListOf<Lane<T>>()
+    val group = mutableListOf<Pair<T, Int>>()
+    val ends = mutableListOf<Int>()
+    var groupEnd = Int.MIN_VALUE
+
+    fun flush() {
+        group.forEach { (item, lane) -> result += Lane(item, lane, ends.size) }
+        group.clear()
+        ends.clear()
     }
+    for (item in items.sortedWith(compareBy(start).thenByDescending(end))) {
+        val from = start(item)
+        val until = end(item)
+        if (from >= groupEnd) {
+            flush()
+            groupEnd = until
+        }
+        var lane = ends.indexOfFirst { it <= from }
+        if (lane < 0) {
+            lane = ends.size
+            ends.add(until)
+        } else ends[lane] = until
+        group += item to lane
+        groupEnd = maxOf(groupEnd, until)
+    }
+    flush()
+    return result
 }
